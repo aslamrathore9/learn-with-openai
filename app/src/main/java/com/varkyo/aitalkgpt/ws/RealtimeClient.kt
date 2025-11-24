@@ -95,30 +95,66 @@ class RealtimeClient(
                         val type = json["type"]?.jsonPrimitive?.content ?: return@launch
 
                         when (type) {
+                            // FIXED: OpenAI sends audio in response.output_audio.delta events (not response.audio.delta)
+                            // The delta field contains base64-encoded PCM audio data
+                            "response.output_audio.delta" -> {
+                                val b64 = json["delta"]?.jsonPrimitive?.content
+                                    ?: return@launch
+
+                                try {
+                                    val pcm = Base64.decode(b64, Base64.DEFAULT)
+                                    if (pcm.isNotEmpty()) {
+                                        // Ensure player is started before playing
+                                        player.start()
+                                        player.playChunk(pcm)
+                                        
+                                        Log.d(
+                                            "AI_WS",
+                                            "Audio delta event: Base64 len=${b64.length}, PCM bytes=${pcm.size}"
+                                        )
+                                    } else {
+                                        Log.w("AI_WS", "Decoded audio data is empty")
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("AI_WS", "Error decoding/playing audio delta", e)
+                                }
+                            }
+                            
+                            // Handle response.content_part.done - this only contains transcript, not audio
+                            // Audio comes in response.output_audio.delta events above
+                            "response.content_part.done" -> {
+                                val part = json["part"]?.jsonObject
+                                val partType = part?.get("type")?.jsonPrimitive?.content
+                                
+                                if (partType == "audio") {
+                                    val transcript = part["transcript"]?.jsonPrimitive?.content
+                                    if (!transcript.isNullOrEmpty()) {
+                                        Log.d("AI_WS", "Audio transcript: $transcript")
+                                    }
+                                    // Note: Audio data is NOT in this event - it comes in response.output_audio.delta
+                                }
+                            }
+                            
+                            // Legacy event types (may not be used by current API)
                             "response.audio.delta",
                             "output_audio_buffer.append" -> {
                                 val b64 = json["delta"]?.jsonPrimitive?.content
                                     ?: json["audio"]?.jsonPrimitive?.content
                                     ?: return@launch
 
-                                val pcm = Base64.decode(b64, Base64.DEFAULT)
-                                player.start()
-                                player.playChunk(pcm)
-
-                                // Optional: check for text in the response
-                                val textOutput = json["text"]?.jsonPrimitive?.content
-                                    ?: json["response"]?.jsonObject
-                                        ?.get("output")?.jsonArray
-                                        ?.joinToString("") { it.jsonPrimitive.contentOrNull ?: "" }
-
-                                if (!textOutput.isNullOrEmpty()) {
-                                    Log.d("AI_WS", "Text snippet from response: ${textOutput.take(200)}") // first 200 chars
+                                try {
+                                    val pcm = Base64.decode(b64, Base64.DEFAULT)
+                                    if (pcm.isNotEmpty()) {
+                                        player.start()
+                                        player.playChunk(pcm)
+                                        Log.d(
+                                            "AI_WS",
+                                            "Legacy audio event: type=$type, Base64 len=${b64.length}, PCM bytes=${pcm.size}"
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("AI_WS", "Error decoding/playing legacy audio event", e)
                                 }
-
-                                Log.d(
-                                    "AI_WS",
-                                    "Audio event received: type=$type, Base64 len=${b64.length}, PCM bytes=${pcm.size}"
-                                )
                             }
 
                             "error" -> {
@@ -144,10 +180,15 @@ class RealtimeClient(
 
 
             override fun onMessage(ws: WebSocket, bytes: ByteString) {
-                Log.d("AI_WS", "RAW TEXT MESSAGE: test")
-
+                // FIXED: Handle binary audio data directly from WebSocket
+                // Some implementations send raw PCM audio as binary messages
+                Log.d("AI_WS", "RAW BINARY MESSAGE: ${bytes.size} bytes")
+                
                 val pcm = bytes.toByteArray()
-                player.playChunk(pcm)
+                if (pcm.isNotEmpty()) {
+                    player.start()
+                    player.playChunk(pcm)
+                }
             }
 
             override fun onFailure(ws: WebSocket, t: Throwable, r: Response?) {

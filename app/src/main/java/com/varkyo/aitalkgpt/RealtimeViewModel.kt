@@ -12,7 +12,8 @@ import kotlinx.coroutines.flow.asStateFlow
 class RealtimeViewModel : ViewModel() {
 
     private val recorder = MicRecorder()
-    private val player = Player()
+    // FIXED: OpenAI Realtime API uses 24000 Hz for audio output, not 16000 Hz
+    private val player = Player(sampleRate = 24000)
 
     private var client: RealtimeClient? = null
 
