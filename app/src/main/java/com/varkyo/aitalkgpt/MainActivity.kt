@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,7 +41,7 @@ class MainActivity : ComponentActivity() {
         // TODO: Replace with your OpenAI API key
         // IMPORTANT: In production, store this securely (e.g., in local.properties or use BuildConfig)
         val openAiApiKey = ""
-        
+
         if (openAiApiKey == "") {
             Toast.makeText(
                 this,
@@ -58,12 +61,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun ConversationScreen(openAiApiKey: String) {
     val viewModel: ConversationViewModel = viewModel { ConversationViewModel(openAiApiKey) }
-    
+
     val state by viewModel.state.collectAsState()
     val userText by viewModel.userText.collectAsState()
-    val aiText by viewModel.aiText.collectAsState()
+    val correctedText by viewModel.correctedText.collectAsState()
+    val aiReply by viewModel.aiReply.collectAsState()
     val error by viewModel.error.collectAsState()
-    
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -74,16 +78,22 @@ fun ConversationScreen(openAiApiKey: String) {
     ) {
         // Title
         Text(
-            text = "AI Conversation",
+            text = "English Learning Call",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold
         )
-        
+
         Spacer(modifier = Modifier.height(8.dp))
-        
+
+        // Call timer (only show during recording)
+        if (state == ConversationState.RECORDING) {
+            val callDuration by viewModel.callDurationSeconds.collectAsState()
+            CallTimer(callDuration = callDuration)
+        }
+
         // Status indicator
         StatusCard(state = state)
-        
+
         // Error message
         error?.let { errorMessage ->
             Card(
@@ -99,8 +109,8 @@ fun ConversationScreen(openAiApiKey: String) {
                 )
             }
         }
-        
-        // User's transcribed text
+
+        // User's transcribed text (original from Whisper)
         if (userText != null) {
             ConversationCard(
                 title = "You said:",
@@ -108,24 +118,35 @@ fun ConversationScreen(openAiApiKey: String) {
                 modifier = Modifier.fillMaxWidth()
             )
         }
-        
-        // AI's response
-        if (aiText != null) {
+
+        // Corrected sentence
+        if (correctedText != null) {
             ConversationCard(
-                title = "AI replied:",
-                text = aiText!!,
+                title = "Corrected:",
+                text = correctedText!!,
+                modifier = Modifier.fillMaxWidth(),
+                isAI = false,
+                isCorrected = true
+            )
+        }
+
+        // AI's reply
+        if (aiReply != null) {
+            ConversationCard(
+                title = "Reply:",
+                text = aiReply!!,
                 modifier = Modifier.fillMaxWidth(),
                 isAI = true
             )
         }
-        
+
         Spacer(modifier = Modifier.weight(1f))
-        
-        // Record button
-        RecordButton(
+
+        // Call button
+        CallButton(
             state = state,
-            onStartRecording = { viewModel.startRecording() },
-            onStopRecording = { viewModel.stopRecording() },
+            onStartCall = { viewModel.startCall() },
+            onStopCall = { viewModel.stopCall() },
             onRetry = { viewModel.retry() },
             modifier = Modifier.fillMaxWidth()
         )
@@ -133,17 +154,55 @@ fun ConversationScreen(openAiApiKey: String) {
 }
 
 @Composable
+fun CallTimer(callDuration: Long) {
+    val minutes = callDuration / 60
+    val seconds = callDuration % 60
+    val timeText = String.format("%02d:%02d", minutes, seconds)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFF44336).copy(alpha = 0.1f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(12.dp)
+                    .background(
+                        color = Color(0xFFF44336),
+                        shape = RoundedCornerShape(50)
+                    )
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Call in progress: $timeText",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFF44336)
+            )
+        }
+    }
+}
+
+@Composable
 fun StatusCard(state: ConversationState) {
     val (statusText, statusColor) = when (state) {
-        ConversationState.IDLE -> "Ready to record" to Color(0xFF4CAF50)
-        ConversationState.RECORDING -> "Recording..." to Color(0xFFF44336)
-        ConversationState.TRANSCRIBING -> "Transcribing..." to Color(0xFFFF9800)
+        ConversationState.IDLE -> "Ready to call" to Color(0xFF4CAF50)
+        ConversationState.RECORDING -> "Listening... (auto-stops on silence)" to Color(0xFFF44336)
+        ConversationState.TRANSCRIBING -> "Transcribing your speech..." to Color(0xFFFF9800)
         ConversationState.ASKING -> "Getting AI response..." to Color(0xFF2196F3)
         ConversationState.SPEAKING -> "Generating speech..." to Color(0xFF9C27B0)
         ConversationState.PLAYING -> "Playing response..." to Color(0xFF00BCD4)
         ConversationState.ERROR -> "Error occurred" to Color(0xFFF44336)
     }
-    
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -180,15 +239,26 @@ fun ConversationCard(
     title: String,
     text: String,
     modifier: Modifier = Modifier,
-    isAI: Boolean = false
+    isAI: Boolean = false,
+    isCorrected: Boolean = false
 ) {
+    // Determine card color based on type
+    val containerColor = when {
+        isAI -> MaterialTheme.colorScheme.primaryContainer
+        isCorrected -> MaterialTheme.colorScheme.secondaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+
+    val onContainerColor = when {
+        isAI -> MaterialTheme.colorScheme.onPrimaryContainer
+        isCorrected -> MaterialTheme.colorScheme.onSecondaryContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(
-            containerColor = if (isAI) 
-                MaterialTheme.colorScheme.primaryContainer 
-            else 
-                MaterialTheme.colorScheme.surfaceVariant
+            containerColor = containerColor
         )
     ) {
         Column(
@@ -198,68 +268,86 @@ fun ConversationCard(
                 text = title,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                color = if (isAI)
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                else
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                color = onContainerColor
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = text,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (isAI)
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                else
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                color = onContainerColor
             )
         }
     }
 }
 
 @Composable
-fun RecordButton(
+fun CallButton(
     state: ConversationState,
-    onStartRecording: () -> Unit,
-    onStopRecording: () -> Unit,
+    onStartCall: () -> Unit,
+    onStopCall: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     when (state) {
         ConversationState.IDLE -> {
             Button(
-                onClick = onStartRecording,
-                modifier = modifier.height(56.dp)
+                onClick = onStartCall,
+                modifier = modifier.height(64.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4CAF50)
+                )
             ) {
-                Text("Start Recording", style = MaterialTheme.typography.titleMedium)
+                Icon(
+                    imageVector = Icons.Filled.Phone,
+                    contentDescription = "Call",
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Call",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
         ConversationState.RECORDING -> {
+            // Show call button with stop option (though auto-stop will handle it)
             Button(
-                onClick = onStopRecording,
-                modifier = modifier.height(56.dp),
+                onClick = onStopCall,
+                modifier = modifier.height(64.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.error
                 )
             ) {
-                Text("Stop Recording", style = MaterialTheme.typography.titleMedium)
+                Icon(
+                    imageVector = Icons.Filled.Clear,
+                    contentDescription = "End Call",
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "End Call",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
         ConversationState.ERROR -> {
             Button(
                 onClick = onRetry,
-                modifier = modifier.height(56.dp),
+                modifier = modifier.height(64.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.secondary
                 )
             ) {
-                Text("Retry", style = MaterialTheme.typography.titleMedium)
+                Text("Retry Call", style = MaterialTheme.typography.titleMedium)
             }
         }
         else -> {
             // Show disabled button during processing
             Button(
                 onClick = { },
-                modifier = modifier.height(56.dp),
+                modifier = modifier.height(64.dp),
                 enabled = false
             ) {
                 Text("Processing...", style = MaterialTheme.typography.titleMedium)
