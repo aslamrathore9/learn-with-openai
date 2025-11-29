@@ -17,9 +17,9 @@ import kotlin.math.sqrt
  */
 class AudioRecorder(
     private val sampleRate: Int = 16000,
-    private val silenceThresholdDb: Float = -50f, // dB threshold for silence (lower = more sensitive)
-    private val silenceDurationMs: Long = 1000, // Stop after 1.0s of silence (reduced from 1.5s)
-    private val minRecordingDurationMs: Long = 500 // Minimum recording duration
+    private val silenceThresholdDb: Float = -45f, // dB threshold for silence (lower = more sensitive, increased sensitivity)
+    private val silenceDurationMs: Long = 1500, // Stop after 1.5s of silence (more time before stopping)
+    private val minRecordingDurationMs: Long = 800 // Minimum recording duration (increased to capture more)
 ) {
     private var audioRecord: AudioRecord? = null
     private var recordingThread: Thread? = null
@@ -58,20 +58,38 @@ class AudioRecorder(
 
         val bufferSize = minBufferSize * 2
 
+        // Try VOICE_RECOGNITION first, fallback to MIC if not available
+        var audioSource = MediaRecorder.AudioSource.VOICE_RECOGNITION
         audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            audioSource,
             sampleRate,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
             bufferSize
         )
+        
+        // If initialization failed, try with MIC audio source
+        if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+            Log.w("AudioRecorder", "VOICE_RECOGNITION failed, trying MIC source")
+            audioRecord?.release()
+            audioSource = MediaRecorder.AudioSource.MIC
+            audioRecord = AudioRecord(
+                audioSource,
+                sampleRate,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                bufferSize
+            )
+        }
 
         if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-            Log.e("AudioRecorder", "AudioRecord failed to initialize")
+            Log.e("AudioRecorder", "AudioRecord failed to initialize with all audio sources")
             audioRecord?.release()
             audioRecord = null
             return
         }
+        
+        Log.d("AudioRecorder", "AudioRecord initialized successfully with source: $audioSource")
 
         isRecording = true
         recordingStartTime = System.currentTimeMillis()
@@ -135,16 +153,24 @@ class AudioRecorder(
             val silenceDuration = currentTime - lastSpeechTime
 
             // Check if we have speech (above threshold)
-            if (rmsDb > silenceThresholdDb) {
+            // More lenient: consider it speech if above threshold OR if we have any significant audio
+            val isSpeech = rmsDb > silenceThresholdDb || rmsDb > -60f // Even very quiet speech is considered
+            
+            if (isSpeech) {
                 lastSpeechTime = currentTime
                 hasDetectedSpeech = true
                 consecutiveSilenceChunks = 0
-                Log.d("AudioRecorder", "Speech detected: ${String.format("%.1f", rmsDb)}dB (threshold: ${silenceThresholdDb}dB)")
+                // Log speech detection more frequently for debugging
+                if (rmsDb > silenceThresholdDb) {
+                    Log.d("AudioRecorder", "✅ Speech detected: ${String.format("%.1f", rmsDb)}dB (threshold: ${silenceThresholdDb}dB)")
+                } else {
+                    Log.d("AudioRecorder", "🔉 Quiet speech: ${String.format("%.1f", rmsDb)}dB")
+                }
             } else {
                 consecutiveSilenceChunks++
                 // Log every 5 chunks to avoid spam
                 if (consecutiveSilenceChunks % 5 == 0) {
-                    Log.d("AudioRecorder", "Silence: ${String.format("%.1f", rmsDb)}dB, chunks: $consecutiveSilenceChunks/$requiredSilenceChunks")
+                    Log.d("AudioRecorder", "🔇 Silence: ${String.format("%.1f", rmsDb)}dB, chunks: $consecutiveSilenceChunks/$requiredSilenceChunks")
                 }
             }
 
@@ -152,9 +178,10 @@ class AudioRecorder(
             // 1. Minimum recording duration has passed
             // 2. Speech was detected at least once
             // 3. Silence duration threshold exceeded
+            // Only stop if we've detected speech and had sufficient silence
             if (recordingDuration >= minRecordingDurationMs &&
                 hasDetectedSpeech &&
-                silenceDuration >= silenceDurationMs) {
+                consecutiveSilenceChunks >= requiredSilenceChunks) {
                 Log.d("AudioRecorder", "✅ Auto-stop triggered!")
                 Log.d("AudioRecorder", "   Recording duration: ${recordingDuration}ms")
                 Log.d("AudioRecorder", "   Silence duration: ${silenceDuration}ms (threshold: ${silenceDurationMs}ms)")
@@ -179,8 +206,17 @@ class AudioRecorder(
                 offset += chunk.size
             }
 
-            _audioData.value = combinedAudio
-            Log.d("AudioRecorder", "Recording complete: ${combinedAudio.size} bytes")
+            // Only send audio if we have enough data (at least minimum recording duration worth)
+            val minBytes = (minRecordingDurationMs * sampleRate * 2 / 1000).toInt() // 2 bytes per sample
+            if (combinedAudio.size >= minBytes && hasDetectedSpeech) {
+                _audioData.value = combinedAudio
+                Log.d("AudioRecorder", "✅ Recording complete: ${combinedAudio.size} bytes (${combinedAudio.size / sampleRate / 2}ms)")
+            } else {
+                Log.w("AudioRecorder", "⚠️ Recording too short or no speech detected: ${combinedAudio.size} bytes, speech: $hasDetectedSpeech")
+                // Don't send empty/too short recordings
+            }
+        } else {
+            Log.w("AudioRecorder", "⚠️ No audio data captured!")
         }
 
         cleanupAfterRecording()

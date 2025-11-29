@@ -50,6 +50,12 @@ class ConversationViewModel(
     val callDurationSeconds: StateFlow<Long> = _callDurationSeconds.asStateFlow()
 
     private var callStartTime = 0L
+    
+    // Conversation history for context
+    private val conversationHistory = mutableListOf<Pair<String, String>>() // (userMessage, aiReply)
+    
+    // Flag to track if we're in an active conversation
+    private var isInConversation = false
 
     init {
         // Observe audio data from recorder (set up once)
@@ -64,6 +70,7 @@ class ConversationViewModel(
 
     /**
      * Start call - begins recording with timer
+     * Initializes conversation history for continuous conversation
      */
     fun startCall() {
         if (_state.value != ConversationState.IDLE && _state.value != ConversationState.ERROR) {
@@ -78,10 +85,14 @@ class ConversationViewModel(
         _aiReply.value = null
         _callDurationSeconds.value = 0L
         callStartTime = System.currentTimeMillis()
+        
+        // Clear conversation history when starting a new call
+        conversationHistory.clear()
+        isInConversation = true
 
-        // Start timer
+        // Start timer for the entire conversation
         viewModelScope.launch {
-            while (_state.value == ConversationState.RECORDING) {
+            while (isInConversation) {
                 kotlinx.coroutines.delay(1000)
                 val elapsed = (System.currentTimeMillis() - callStartTime) / 1000
                 _callDurationSeconds.value = elapsed
@@ -89,18 +100,20 @@ class ConversationViewModel(
         }
 
         audioRecorder.startRecording()
-        Log.d("ConversationViewModel", "Call started - recording with auto-stop")
+        Log.d("ConversationViewModel", "Call started - continuous conversation mode enabled")
     }
 
     /**
-     * Stop call manually (if needed)
-     * Note: Recording auto-stops on silence detection
+     * Stop call manually - ends the conversation completely
      */
     fun stopCall() {
-        if (_state.value == ConversationState.RECORDING) {
-            audioRecorder.stopRecording()
-            _callDurationSeconds.value = 0L
-        }
+        Log.d("ConversationViewModel", "User manually ending conversation")
+        isInConversation = false
+        audioRecorder.stopRecording()
+        audioPlayer.stop()
+        _callDurationSeconds.value = 0L
+        conversationHistory.clear()
+        _state.value = ConversationState.IDLE
     }
 
     /**
@@ -123,8 +136,8 @@ class ConversationViewModel(
             _userText.value = text
             _state.value = ConversationState.ASKING
 
-            // Step 2: Ask AI for correction and reply
-            val askResult = apiClient.ask(text)
+            // Step 2: Ask AI for correction and reply (with conversation history)
+            val askResult = apiClient.ask(text, conversationHistory)
 
             askResult.onSuccess { correctionResponse ->
                 // DEBUG: Print AI response
@@ -137,6 +150,10 @@ class ConversationViewModel(
 
                 _correctedText.value = correctionResponse.corrected
                 _aiReply.value = correctionResponse.reply
+                
+                // Add to conversation history
+                conversationHistory.add(Pair(text, correctionResponse.reply))
+                
                 _state.value = ConversationState.SPEAKING
 
                 // Step 3: Convert AI reply to speech (use the reply text, not the corrected text)
@@ -149,9 +166,28 @@ class ConversationViewModel(
                     // Step 4: Play audio
                     audioPlayer.playMp3(mp3Audio) {
                         // Playback completed
-                        _state.value = ConversationState.IDLE
-                        _callDurationSeconds.value = 0L
-                        Log.d("ConversationViewModel", "✅ Conversation cycle completed")
+                        // Continue conversation automatically if still in conversation mode
+                        // Check both the flag and current state to ensure conversation is still active
+                        if (isInConversation && _state.value != ConversationState.IDLE && _state.value != ConversationState.ERROR) {
+                            Log.d("ConversationViewModel", "✅ Turn completed, continuing conversation...")
+                            // Restart recording for the next turn
+                            viewModelScope.launch {
+                                kotlinx.coroutines.delay(500) // Small delay before restarting
+                                // Double-check we're still in conversation before restarting
+                                if (isInConversation && _state.value != ConversationState.IDLE && _state.value != ConversationState.ERROR) {
+                                    _state.value = ConversationState.RECORDING
+                                    audioRecorder.startRecording()
+                                    Log.d("ConversationViewModel", "🔄 Restarted recording for next turn")
+                                }
+                            }
+                        } else {
+                            // Conversation ended or error occurred
+                            if (!isInConversation) {
+                                _state.value = ConversationState.IDLE
+                                _callDurationSeconds.value = 0L
+                                Log.d("ConversationViewModel", "✅ Conversation ended")
+                            }
+                        }
                     }
                 }.onFailure { error ->
                     Log.e("ConversationViewModel", "❌ Speech generation failed", error)
@@ -180,8 +216,15 @@ class ConversationViewModel(
      * Retry after error
      */
     fun retry() {
-        _state.value = ConversationState.IDLE
-        _error.value = null
+        if (isInConversation) {
+            // If we're in a conversation, restart recording
+            _error.value = null
+            _state.value = ConversationState.RECORDING
+            audioRecorder.startRecording()
+        } else {
+            _state.value = ConversationState.IDLE
+            _error.value = null
+        }
     }
 
     override fun onCleared() {

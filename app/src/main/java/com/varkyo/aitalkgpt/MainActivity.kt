@@ -85,8 +85,8 @@ fun ConversationScreen(openAiApiKey: String) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Call timer (only show during recording)
-        if (state == ConversationState.RECORDING) {
+        // Call timer (show during entire conversation)
+        if (state != ConversationState.IDLE && state != ConversationState.ERROR) {
             val callDuration by viewModel.callDurationSeconds.collectAsState()
             CallTimer(callDuration = callDuration)
         }
@@ -195,11 +195,11 @@ fun CallTimer(callDuration: Long) {
 fun StatusCard(state: ConversationState) {
     val (statusText, statusColor) = when (state) {
         ConversationState.IDLE -> "Ready to call" to Color(0xFF4CAF50)
-        ConversationState.RECORDING -> "Listening... (auto-stops on silence)" to Color(0xFFF44336)
-        ConversationState.TRANSCRIBING -> "Transcribing your speech..." to Color(0xFFFF9800)
-        ConversationState.ASKING -> "Getting AI response..." to Color(0xFF2196F3)
-        ConversationState.SPEAKING -> "Generating speech..." to Color(0xFF9C27B0)
-        ConversationState.PLAYING -> "Playing response..." to Color(0xFF00BCD4)
+        ConversationState.RECORDING -> "Listening... (speak naturally)" to Color(0xFFF44336)
+        ConversationState.TRANSCRIBING -> "Understanding your speech..." to Color(0xFFFF9800)
+        ConversationState.ASKING -> "Tutor is responding..." to Color(0xFF2196F3)
+        ConversationState.SPEAKING -> "Preparing response..." to Color(0xFF9C27B0)
+        ConversationState.PLAYING -> "Tutor is speaking..." to Color(0xFF00BCD4)
         ConversationState.ERROR -> "Error occurred" to Color(0xFFF44336)
     }
 
@@ -311,7 +311,29 @@ fun CallButton(
             }
         }
         ConversationState.RECORDING -> {
-            // Show call button with stop option (though auto-stop will handle it)
+            // Show call button with stop option during recording
+            Button(
+                onClick = onStopCall,
+                modifier = modifier.height(64.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Clear,
+                    contentDescription = "End Call",
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "End Call",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+        ConversationState.PLAYING -> {
+            // Show stop button during playback too
             Button(
                 onClick = onStopCall,
                 modifier = modifier.height(64.dp),
@@ -344,13 +366,25 @@ fun CallButton(
             }
         }
         else -> {
-            // Show disabled button during processing
+            // Show "End Call" button during other processing states (TRANSCRIBING, ASKING, SPEAKING)
             Button(
-                onClick = { },
+                onClick = onStopCall,
                 modifier = modifier.height(64.dp),
-                enabled = false
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
             ) {
-                Text("Processing...", style = MaterialTheme.typography.titleMedium)
+                Icon(
+                    imageVector = Icons.Filled.Clear,
+                    contentDescription = "End Call",
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "End Call",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

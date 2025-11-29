@@ -111,47 +111,79 @@ class ApiClient(
      * Get English teacher feedback and correction using OpenAI Chat API
      * POST https://api.openai.com/v1/chat/completions
      * @param userText User's spoken text (transcribed from Whisper, may contain errors)
+     * @param conversationHistory List of previous conversation turns (userMessage, aiReply)
      * @return CorrectionResponse with corrected sentence and short reply
      */
-    suspend fun ask(userText: String): Result<CorrectionResponse> = withContext(Dispatchers.IO) {
+    suspend fun ask(userText: String, conversationHistory: List<Pair<String, String>> = emptyList()): Result<CorrectionResponse> = withContext(Dispatchers.IO) {
         try {
             // Build OpenAI chat completion request with exact format requirements
-            val systemPrompt = """You are an English Speaking Assistant for a mobile app.
+            val systemPrompt = """You are a friendly English tutor helping a student practice speaking English through natural conversation.
+
+YOUR PERSONALITY:
+- Be warm, encouraging, and supportive
+- Act like a friendly teacher who genuinely cares
+- Keep the conversation natural and flowing
+- Show enthusiasm about the student's progress
 
 MAIN TASKS:
 1. The user sends a sentence converted from voice using Whisper.
 2. First, correct the user's sentence so it becomes natural and proper English.
-3. Then generate a short, simple reply in English.
-4. Always follow this exact format:
+3. Then generate a conversational reply that:
+   - Responds naturally to what they said
+   - Gently corrects mistakes (mention briefly if needed)
+   - Encourages them to continue
+   - Keeps the conversation going
 
+OUTPUT FORMAT (always follow this exactly):
 Corrected: <corrected sentence>
-Reply: <your short reply>
+Reply: <your conversational reply>
 
-LANGUAGE RULES:
-- Keep the reply short (1–2 sentences only).
-- Do NOT change the meaning of what the user said.
-- Fix grammar, vocabulary, clarity, and fluency.
-- If the sentence is already correct, repeat it as-is.
-- Do NOT explain corrections.
-- Do NOT write long paragraphs.
-- Style must be friendly, simple, and clear.
-- Output ONLY: "Corrected:" and "Reply:".
+CONVERSATION RULES:
+- Keep replies short and natural (1–2 sentences)
+- If the sentence is already correct, repeat it as-is in "Corrected:"
+- Be encouraging: "Great!", "Nice!", "Well done!"
+- Gently point out corrections: "That's close! The correct way is..."
+- Ask follow-up questions to keep conversation flowing
+- Maintain conversation context from previous turns
+- Do NOT explain corrections in detail
+- Do NOT write long paragraphs
+- Style must be friendly, simple, and conversational
 
 WHISPER NOTE:
-The user's text is transcribed from Whisper audio. Correct any small errors caused by unclear pronunciation, missing words, or transcription issues."""
+The user's text is transcribed from Whisper audio. Correct any small errors caused by unclear pronunciation, missing words, or transcription issues.
+
+Remember: This is a natural conversation. Keep it friendly and flowing!"""
+
+            // Build messages array with system prompt, conversation history, and current user message
+            val messagesArray = org.json.JSONArray().apply {
+                // System prompt
+                put(JSONObject().apply {
+                    put("role", "system")
+                    put("content", systemPrompt)
+                })
+                
+                // Add conversation history (previous turns)
+                for ((userMsg, aiReply) in conversationHistory) {
+                    put(JSONObject().apply {
+                        put("role", "user")
+                        put("content", userMsg)
+                    })
+                    put(JSONObject().apply {
+                        put("role", "assistant")
+                        put("content", aiReply)
+                    })
+                }
+                
+                // Current user message
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", userText)
+                })
+            }
 
             val requestBody = JSONObject().apply {
                 put("model", "gpt-5-nano")
-                put("messages", org.json.JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("role", "system")
-                        put("content", systemPrompt)
-                    })
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        put("content", userText)
-                    })
-                })
+                put("messages", messagesArray)
                 // Note: gpt-5-nano only supports default temperature (1), so we don't set it
             }
 
