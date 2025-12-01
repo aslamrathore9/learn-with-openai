@@ -19,7 +19,8 @@ class AudioRecorder(
     private val sampleRate: Int = 16000,
     private val silenceThresholdDb: Float = -45f, // dB threshold for silence (lower = more sensitive, increased sensitivity)
     private val silenceDurationMs: Long = 1500, // Stop after 1.5s of silence (more time before stopping)
-    private val minRecordingDurationMs: Long = 800 // Minimum recording duration (increased to capture more)
+    private val minRecordingDurationMs: Long = 800, // Minimum recording duration (increased to capture more)
+    private val maxRecordingDurationMs: Long = 30000 // Maximum recording duration (30 seconds for optimal upload speed)
 ) {
     private var audioRecord: AudioRecord? = null
     private var recordingThread: Thread? = null
@@ -151,6 +152,13 @@ class AudioRecorder(
             val currentTime = System.currentTimeMillis()
             val recordingDuration = currentTime - recordingStartTime
             val silenceDuration = currentTime - lastSpeechTime
+
+            // Check maximum duration limit (for optimal upload speed)
+            if (recordingDuration >= maxRecordingDurationMs) {
+                Log.d("AudioRecorder", "✅ Max duration reached (${maxRecordingDurationMs}ms = ${maxRecordingDurationMs / 1000}s), auto-stopping")
+                isRecording = false
+                break
+            }
 
             // Check if we have speech (above threshold)
             // More lenient: consider it speech if above threshold OR if we have any significant audio

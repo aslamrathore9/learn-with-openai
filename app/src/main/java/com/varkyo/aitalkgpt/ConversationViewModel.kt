@@ -136,8 +136,18 @@ class ConversationViewModel(
             _userText.value = text
             _state.value = ConversationState.ASKING
 
-            // Step 2: Ask AI for correction and reply (with conversation history)
-            val askResult = apiClient.ask(text, conversationHistory)
+            // OPTIMIZATION: Limit conversation history to last 5 turns for better performance
+            // Server will also limit, but this saves bandwidth on upload
+            // 5 turns is optimal for sentence-by-sentence corrections (covers recent context)
+            val MAX_HISTORY_TURNS = 5 // Keep last 5 turns (10 messages)
+            val limitedHistory = if (conversationHistory.size > MAX_HISTORY_TURNS) {
+                conversationHistory.takeLast(MAX_HISTORY_TURNS)
+            } else {
+                conversationHistory
+            }
+
+            // Step 2: Ask AI for correction and reply (with limited conversation history)
+            val askResult = apiClient.ask(text, limitedHistory)
 
             askResult.onSuccess { correctionResponse ->
                 // DEBUG: Print AI response

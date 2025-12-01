@@ -46,6 +46,20 @@ class ApiClient(
         try {
             // Convert PCM to WAV format
             val wavData = convertPcmToWav(audioData, sampleRate = 16000)
+            
+            // Validate file size before uploading (5 MB limit for fast uploads)
+            val MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
+            if (wavData.size > MAX_FILE_SIZE) {
+                val estimatedDuration = (wavData.size / 32000).toInt() // Rough estimate: 16kHz mono = 32KB/second
+                Log.e("ApiClient", "Audio file too large: ${wavData.size / 1024} KB (~${estimatedDuration}s)")
+                return@withContext Result.failure(
+                    IOException("Audio file too large (${wavData.size / 1024} KB, ~${estimatedDuration}s). Please record shorter clips (max 30 seconds).")
+                )
+            }
+            
+            val estimatedDuration = (wavData.size / 32000).toFloat()
+            Log.d("ApiClient", "Uploading audio: ${wavData.size / 1024} KB (~${String.format("%.1f", estimatedDuration)}s)")
+            
             // Create temp WAV file
             tempFile = File.createTempFile("audio_", ".wav")
             FileOutputStream(tempFile).use { it.write(wavData) }
