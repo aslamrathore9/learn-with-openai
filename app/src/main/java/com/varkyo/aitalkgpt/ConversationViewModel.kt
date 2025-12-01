@@ -24,11 +24,11 @@ import kotlinx.coroutines.launch
  * 5. Audio is played back to user
  */
 class ConversationViewModel(
-    private val openAiApiKey: String
+    private val serverBaseUrl: String = "https://my-server-openai.onrender.com"
 ) : ViewModel() {
 
     private val audioRecorder = AudioRecorder()
-    private val apiClient = ApiClient(openAiApiKey)
+    private val apiClient = ApiClient(serverBaseUrl)
     private val audioPlayer = AudioPlayer()
 
     private val _state = MutableStateFlow(ConversationState.IDLE)

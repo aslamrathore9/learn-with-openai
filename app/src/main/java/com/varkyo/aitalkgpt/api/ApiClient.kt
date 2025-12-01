@@ -26,20 +26,18 @@ data class CorrectionResponse(
  * Calls OpenAI endpoints directly using API key
  */
 class ApiClient(
-    private val openAiApiKey: String
+    private val serverBaseUrl: String = "https://my-server-openai.onrender.com"
 ) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
-
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
-    private val openAiBaseUrl = "https://api.openai.com/v1"
 
     /**
-     * Transcribe audio to text using OpenAI Whisper API
-     * POST https://api.openai.com/v1/audio/transcriptions
+     * Transcribe audio to text using backend whisper API
+     * POST {serverBaseUrl}/transcribe (multipart/form-data)
      * @param audioData PCM audio bytes (16-bit, 16kHz, mono)
      * @return Transcribed text
      */
@@ -48,186 +46,82 @@ class ApiClient(
         try {
             // Convert PCM to WAV format
             val wavData = convertPcmToWav(audioData, sampleRate = 16000)
-            Log.d("ApiClient", "Converted PCM to WAV: ${wavData.size} bytes")
-
-            // Create temporary file for multipart upload
+            // Create temp WAV file
             tempFile = File.createTempFile("audio_", ".wav")
-            FileOutputStream(tempFile!!).use { fos ->
-                fos.write(wavData)
-                fos.flush()
-            }
+            FileOutputStream(tempFile).use { it.write(wavData) }
 
-            // Create multipart request body for OpenAI
-            // OpenAI expects: file (audio file) and model (string)
             val requestBody = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart(
-                    "file",
+                    "audio",
                     "audio.wav",
-                    tempFile!!.asRequestBody("audio/wav".toMediaType())
+                    tempFile.asRequestBody("audio/wav".toMediaType())
                 )
-                .addFormDataPart("model", "whisper-1") // OpenAI Whisper model
                 .build()
 
             val request = Request.Builder()
-                .url("$openAiBaseUrl/audio/transcriptions")
-                .addHeader("Authorization", "Bearer $openAiApiKey")
+                .url("$serverBaseUrl/transcribe")
                 .post(requestBody)
                 .build()
 
-            Log.d("ApiClient", "Sending transcription request to OpenAI...")
             val response = client.newCall(request).execute()
-
             if (!response.isSuccessful) {
                 val errorBody = response.body?.string() ?: "Unknown error"
-                Log.e("ApiClient", "Transcribe failed: ${response.code} - $errorBody")
-                return@withContext Result.failure(
-                    IOException("Transcribe failed: ${response.code} - $errorBody")
-                )
+                return@withContext Result.failure(IOException("Transcribe failed: ${response.code} - $errorBody"))
             }
-
-            val responseBody = response.body?.string() ?: ""
-            Log.d("ApiClient", "Transcription response: $responseBody")
-
-            // OpenAI returns: { "text": "..." }
-            val text = parseJsonResponse(responseBody, "text")
-
-            if (text.isNullOrEmpty()) {
+            val body = response.body?.string() ?: ""
+            val text = parseJsonResponse(body, "text")
+            if (text.isNullOrEmpty())
                 return@withContext Result.failure(IOException("Empty transcription response"))
-            }
-
-            Log.d("ApiClient", "✅ Transcription successful: \"$text\"")
             Result.success(text)
         } catch (e: Exception) {
-            Log.e("ApiClient", "Transcribe error", e)
             Result.failure(e)
         } finally {
-            // Clean up temp file
             tempFile?.delete()
         }
     }
 
     /**
-     * Get English teacher feedback and correction using OpenAI Chat API
-     * POST https://api.openai.com/v1/chat/completions
-     * @param userText User's spoken text (transcribed from Whisper, may contain errors)
-     * @param conversationHistory List of previous conversation turns (userMessage, aiReply)
+     * Get English teacher feedback and correction using backend API
+     * POST {serverBaseUrl}/chat
+     * @param userText user's sentence
+     * @param conversationHistory List of previous (user, ai) messages (List<Pair<String,String>>) - map to [{user:...,ai:...}]
      * @return CorrectionResponse with corrected sentence and short reply
      */
     suspend fun ask(userText: String, conversationHistory: List<Pair<String, String>> = emptyList()): Result<CorrectionResponse> = withContext(Dispatchers.IO) {
         try {
-            // Build OpenAI chat completion request with exact format requirements
-            val systemPrompt = """You are a friendly English tutor helping a student practice speaking English through natural conversation.
-
-YOUR PERSONALITY:
-- Be warm, encouraging, and supportive
-- Act like a friendly teacher who genuinely cares
-- Keep the conversation natural and flowing
-- Show enthusiasm about the student's progress
-
-MAIN TASKS:
-1. The user sends a sentence converted from voice using Whisper.
-2. First, correct the user's sentence so it becomes natural and proper English.
-3. Then generate a conversational reply that:
-   - Responds naturally to what they said
-   - Gently corrects mistakes (mention briefly if needed)
-   - Encourages them to continue
-   - Keeps the conversation going
-
-OUTPUT FORMAT (always follow this exactly):
-Corrected: <corrected sentence>
-Reply: <your conversational reply>
-
-CONVERSATION RULES:
-- Keep replies short and natural (1–2 sentences)
-- If the sentence is already correct, repeat it as-is in "Corrected:"
-- Be encouraging: "Great!", "Nice!", "Well done!"
-- Gently point out corrections: "That's close! The correct way is..."
-- Ask follow-up questions to keep conversation flowing
-- Maintain conversation context from previous turns
-- Do NOT explain corrections in detail
-- Do NOT write long paragraphs
-- Style must be friendly, simple, and conversational
-
-WHISPER NOTE:
-The user's text is transcribed from Whisper audio. Correct any small errors caused by unclear pronunciation, missing words, or transcription issues.
-
-Remember: This is a natural conversation. Keep it friendly and flowing!"""
-
-            // Build messages array with system prompt, conversation history, and current user message
-            val messagesArray = org.json.JSONArray().apply {
-                // System prompt
-                put(JSONObject().apply {
-                    put("role", "system")
-                    put("content", systemPrompt)
-                })
-                
-                // Add conversation history (previous turns)
-                for ((userMsg, aiReply) in conversationHistory) {
+            val historyArray = org.json.JSONArray().apply {
+                for ((user, ai) in conversationHistory) {
                     put(JSONObject().apply {
-                        put("role", "user")
-                        put("content", userMsg)
-                    })
-                    put(JSONObject().apply {
-                        put("role", "assistant")
-                        put("content", aiReply)
+                        put("user", user)
+                        put("ai", ai)
                     })
                 }
-                
-                // Current user message
-                put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", userText)
-                })
             }
-
-            val requestBody = JSONObject().apply {
-                put("model", "gpt-5-nano")
-                put("messages", messagesArray)
-                // Note: gpt-5-nano only supports default temperature (1), so we don't set it
+            val requestBodyJson = JSONObject().apply {
+                put("userText", userText)
+                put("conversationHistory", historyArray)
             }
-
+            val requestBody = requestBodyJson.toString().toRequestBody(jsonMediaType)
             val request = Request.Builder()
-                .url("$openAiBaseUrl/chat/completions")
-                .addHeader("Authorization", "Bearer $openAiApiKey")
-                .addHeader("Content-Type", "application/json")
-                .post(requestBody.toString().toRequestBody(jsonMediaType))
+                .url("$serverBaseUrl/chat")
+                .post(requestBody)
                 .build()
-
-            Log.d("ApiClient", "Sending chat request to OpenAI with text: \"$userText\"")
             val response = client.newCall(request).execute()
-
             if (!response.isSuccessful) {
                 val errorBody = response.body?.string() ?: "Unknown error"
-                Log.e("ApiClient", "Ask failed: ${response.code} - $errorBody")
-                return@withContext Result.failure(
-                    IOException("Ask failed: ${response.code} - $errorBody")
-                )
+                return@withContext Result.failure(IOException("Ask failed: ${response.code} - $errorBody"))
             }
-
-            val responseBody = response.body?.string() ?: ""
-            Log.d("ApiClient", "Chat response: $responseBody")
-
-            // OpenAI returns: { "choices": [{ "message": { "content": "..." } }] }
-            val rawResponse = parseOpenAIResponse(responseBody)
-
-            if (rawResponse.isNullOrEmpty()) {
-                return@withContext Result.failure(IOException("Empty AI response"))
+            val body = response.body?.string() ?: ""
+            val json = JSONObject(body)
+            val corrected = json.optString("corrected", null)
+            val reply = json.optString("reply", null)
+            if (!corrected.isNullOrEmpty() && !reply.isNullOrEmpty()) {
+                Result.success(CorrectionResponse(corrected, reply))
+            } else {
+                Result.failure(IOException("Invalid AI response: $body"))
             }
-
-            // Parse the response to extract "Corrected:" and "Reply:"
-            val correctionResponse = parseCorrectionResponse(rawResponse)
-
-            if (correctionResponse == null) {
-                Log.e("ApiClient", "Failed to parse correction response from: $rawResponse")
-                return@withContext Result.failure(IOException("Failed to parse AI response format"))
-            }
-
-            Log.d("ApiClient", "✅ Correction received: \"${correctionResponse.corrected}\"")
-            Log.d("ApiClient", "✅ Reply received: \"${correctionResponse.reply}\"")
-            Result.success(correctionResponse)
         } catch (e: Exception) {
-            Log.e("ApiClient", "Ask error", e)
             Result.failure(e)
         }
     }
@@ -238,9 +132,15 @@ Remember: This is a natural conversation. Keep it friendly and flowing!"""
      * @param text Text to convert to speech
      * @return MP3 audio bytes
      */
+    /**
+     * Convert text to speech using backend TTS API
+     * POST {serverBaseUrl}/tts
+     * @param text Text to convert to speech
+     * @return MP3 audio bytes
+     */
     suspend fun speak(text: String): Result<ByteArray> = withContext(Dispatchers.IO) {
         try {
-            // Build OpenAI TTS request
+            // Build TTS request to backend server
             val requestBody = JSONObject().apply {
                 put("model", "tts-1") // or "tts-1-hd" for higher quality
                 put("voice", "alloy")
@@ -248,13 +148,12 @@ Remember: This is a natural conversation. Keep it friendly and flowing!"""
             }
 
             val request = Request.Builder()
-                .url("$openAiBaseUrl/audio/speech")
-                .addHeader("Authorization", "Bearer $openAiApiKey")
+                .url("$serverBaseUrl/tts")
                 .addHeader("Content-Type", "application/json")
                 .post(requestBody.toString().toRequestBody(jsonMediaType))
                 .build()
 
-            Log.d("ApiClient", "Sending TTS request to OpenAI for text: \"$text\"")
+            Log.d("ApiClient", "Sending TTS request to server for text: \"$text\"")
             val response = client.newCall(request).execute()
 
             if (!response.isSuccessful) {
@@ -265,6 +164,7 @@ Remember: This is a natural conversation. Keep it friendly and flowing!"""
                 )
             }
 
+            // Backend returns audio/mpeg directly (not JSON)
             val audioBytes = response.body?.bytes() ?: ByteArray(0)
 
             if (audioBytes.isEmpty()) {

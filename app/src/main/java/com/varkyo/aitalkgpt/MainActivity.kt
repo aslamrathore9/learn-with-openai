@@ -38,29 +38,17 @@ class MainActivity : ComponentActivity() {
         // Request microphone permission
         requestPermission.launch(Manifest.permission.RECORD_AUDIO)
 
-        // TODO: Replace with your OpenAI API key
-        // IMPORTANT: In production, store this securely (e.g., in local.properties or use BuildConfig)
-        val openAiApiKey = ""
-
-        if (openAiApiKey == "") {
-            Toast.makeText(
-                this,
-                "Please set your OpenAI API key in MainActivity.kt",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-
         setContent {
             MaterialTheme {
-                ConversationScreen(openAiApiKey)
+                ConversationScreen()
             }
         }
     }
 }
 
 @Composable
-fun ConversationScreen(openAiApiKey: String) {
-    val viewModel: ConversationViewModel = viewModel { ConversationViewModel(openAiApiKey) }
+fun ConversationScreen() {
+    val viewModel: ConversationViewModel = viewModel { ConversationViewModel() }
 
     val state by viewModel.state.collectAsState()
     val userText by viewModel.userText.collectAsState()
