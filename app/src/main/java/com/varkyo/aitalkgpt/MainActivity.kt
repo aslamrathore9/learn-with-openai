@@ -48,7 +48,21 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun ConversationScreen() {
-    val viewModel: ConversationViewModel = viewModel { ConversationViewModel() }
+    // Get Application context for AndroidViewModel
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val application = context.applicationContext as android.app.Application
+    
+    // TODO: Set your Agora App ID here or via environment variable
+    // Get from: https://console.agora.io/
+     val agoraAppId = "4b319c885d854bcb984b0efb6553f1c1" // Replace with your Agora App ID
+//    val agoraAppId = project.findProperty("AGORA_APP_ID") as String? ?: ""
+
+    val viewModel: ConversationViewModel = viewModel { 
+        ConversationViewModel(
+            application = application,
+            agoraAppId = agoraAppId
+        )
+    }
 
     val state by viewModel.state.collectAsState()
     val userText by viewModel.userText.collectAsState()

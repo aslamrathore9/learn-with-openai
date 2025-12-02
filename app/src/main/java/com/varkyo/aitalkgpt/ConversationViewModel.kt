@@ -1,33 +1,52 @@
 package com.varkyo.aitalkgpt
 
+import android.app.Application
 import android.util.Log
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.varkyo.aitalkgpt.api.ApiClient
 import com.varkyo.aitalkgpt.api.CorrectionResponse
+import com.varkyo.aitalkgpt.audio.AgoraAudioManager
 import com.varkyo.aitalkgpt.audio.AudioPlayer
-import com.varkyo.aitalkgpt.audio.AudioRecorder
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * ViewModel for English Learning App:
- * Record → Transcribe → Get Teacher Feedback → Speak → Play
- *
+ * ConversationViewModel - English Learning App with Agora RTC Integration
+ * 
+ * This ViewModel orchestrates the conversation flow using Agora for real-time audio:
+ * Record (Agora) → Transcribe → Get Teacher Feedback → Speak → Play
+ * 
  * Flow:
- * 1. User speaks in English
- * 2. Audio is transcribed to text
- * 3. English teacher corrects grammar/pronunciation and responds
- * 4. Teacher's response is converted to speech
- * 5. Audio is played back to user
+ * 1. User speaks in English (captured via Agora RTC)
+ * 2. Audio is transcribed to text (via HTTP API)
+ * 3. English teacher corrects grammar/pronunciation and responds (via HTTP API)
+ * 4. Teacher's response is converted to speech (via HTTP API)
+ * 5. Audio is played back to user (via AudioPlayer)
+ * 
+ * Benefits of Agora:
+ * - Lower latency audio capture
+ * - Better audio quality
+ * - Real-time streaming capabilities
+ * - Improved VAD (Voice Activity Detection)
  */
 class ConversationViewModel(
-    private val serverBaseUrl: String = "https://my-server-openai.onrender.com"
-) : ViewModel() {
+    application: Application,
+    private val serverBaseUrl: String = "https://my-server-openai.onrender.com",
+    private val agoraAppId: String = "", // Set via constructor or environment
+    private val agoraChannelName: String = "english-learning-${System.currentTimeMillis()}" // Unique channel per session
+) : AndroidViewModel(application) {
 
-    private val audioRecorder = AudioRecorder()
+    // Agora Audio Manager for real-time audio streaming
+    private val agoraAudioManager = AgoraAudioManager(
+        context = application.applicationContext,
+        appId = agoraAppId.ifEmpty { getAgoraAppId() },
+        channelName = agoraChannelName,
+        uid = 0 // Agora will assign a random UID
+    )
+    
     private val apiClient = ApiClient(serverBaseUrl)
     private val audioPlayer = AudioPlayer()
 
@@ -58,23 +77,60 @@ class ConversationViewModel(
     private var isInConversation = false
 
     init {
-        // Observe audio data from recorder (set up once)
+        // Initialize Agora RTC Engine
+        val initialized = agoraAudioManager.initialize()
+        if (!initialized) {
+            Log.e("ConversationViewModel", "Failed to initialize Agora RTC Engine")
+            _error.value = "Failed to initialize audio system. Please check Agora App ID."
+        }
+        
+        // Observe audio data from Agora (set up once)
         viewModelScope.launch {
-            audioRecorder.audioData.collect { audioData ->
+            agoraAudioManager.audioData.collect { audioData ->
                 if (audioData != null) {
                     processRecording(audioData)
+                }
+            }
+        }
+        
+        // Observe Agora connection state
+        viewModelScope.launch {
+            agoraAudioManager.isConnected.collect { isConnected ->
+                if (!isConnected && isInConversation && _state.value != ConversationState.IDLE) {
+                    Log.w("ConversationViewModel", "Agora connection lost")
+                    handleError("Connection lost. Please try again.")
                 }
             }
         }
     }
 
     /**
-     * Start call - begins recording with timer
+     * Get Agora App ID from environment or build config
+     * In production, store this securely (e.g., BuildConfig, environment variable)
+     */
+    private fun getAgoraAppId(): String {
+        // TODO: Replace with your actual Agora App ID
+        // You can get this from https://console.agora.io/
+        // For now, return empty string - user must provide via constructor
+        return ""
+    }
+
+    /**
+     * Start call - begins Agora channel and recording with timer
      * Initializes conversation history for continuous conversation
      */
     fun startCall() {
         if (_state.value != ConversationState.IDLE && _state.value != ConversationState.ERROR) {
             Log.w("ConversationViewModel", "Cannot start call in state: ${_state.value}")
+            return
+        }
+
+        // Validate Agora App ID
+        if (agoraAudioManager.let { 
+            val appId = getAgoraAppId()
+            appId.isEmpty() && agoraAppId.isEmpty()
+        }) {
+            handleError("Agora App ID not configured. Please set AGORA_APP_ID.")
             return
         }
 
@@ -99,8 +155,22 @@ class ConversationViewModel(
             }
         }
 
-        audioRecorder.startRecording()
-        Log.d("ConversationViewModel", "Call started - continuous conversation mode enabled")
+        // Join Agora channel (token is optional for testing, required for production)
+        val joinResult = agoraAudioManager.joinChannel(token = null)
+        if (joinResult != 0) {
+            Log.e("ConversationViewModel", "Failed to join Agora channel: $joinResult")
+            handleError("Failed to connect to audio channel. Error code: $joinResult")
+            return
+        }
+
+        // Start audio collection after a short delay to ensure channel is joined
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(500) // Wait for channel join
+            if (isInConversation) {
+                agoraAudioManager.startAudioCollection()
+                Log.d("ConversationViewModel", "Call started - Agora RTC enabled, continuous conversation mode")
+            }
+        }
     }
 
     /**
@@ -109,7 +179,8 @@ class ConversationViewModel(
     fun stopCall() {
         Log.d("ConversationViewModel", "User manually ending conversation")
         isInConversation = false
-        audioRecorder.stopRecording()
+        agoraAudioManager.stopAudioCollection()
+        agoraAudioManager.leaveChannel()
         audioPlayer.stop()
         _callDurationSeconds.value = 0L
         conversationHistory.clear()
@@ -118,6 +189,7 @@ class ConversationViewModel(
 
     /**
      * Process recorded audio: Transcribe → Ask → Speak → Play
+     * This is called automatically when AgoraAudioManager collects enough audio
      */
     private suspend fun processRecording(audioData: ByteArray) {
         Log.d("ConversationViewModel", "Processing audio: ${audioData.size} bytes")
@@ -180,14 +252,14 @@ class ConversationViewModel(
                         // Check both the flag and current state to ensure conversation is still active
                         if (isInConversation && _state.value != ConversationState.IDLE && _state.value != ConversationState.ERROR) {
                             Log.d("ConversationViewModel", "✅ Turn completed, continuing conversation...")
-                            // Restart recording for the next turn
+                            // Restart audio collection for the next turn
                             viewModelScope.launch {
                                 kotlinx.coroutines.delay(500) // Small delay before restarting
                                 // Double-check we're still in conversation before restarting
                                 if (isInConversation && _state.value != ConversationState.IDLE && _state.value != ConversationState.ERROR) {
                                     _state.value = ConversationState.RECORDING
-                                    audioRecorder.startRecording()
-                                    Log.d("ConversationViewModel", "🔄 Restarted recording for next turn")
+                                    agoraAudioManager.startAudioCollection()
+                                    Log.d("ConversationViewModel", "🔄 Restarted audio collection for next turn")
                                 }
                             }
                         } else {
@@ -227,10 +299,10 @@ class ConversationViewModel(
      */
     fun retry() {
         if (isInConversation) {
-            // If we're in a conversation, restart recording
+            // If we're in a conversation, restart audio collection
             _error.value = null
             _state.value = ConversationState.RECORDING
-            audioRecorder.startRecording()
+            agoraAudioManager.startAudioCollection()
         } else {
             _state.value = ConversationState.IDLE
             _error.value = null
@@ -239,7 +311,7 @@ class ConversationViewModel(
 
     override fun onCleared() {
         super.onCleared()
-        audioRecorder.release()
+        agoraAudioManager.release()
         audioPlayer.release()
     }
 }
@@ -249,11 +321,10 @@ class ConversationViewModel(
  */
 enum class ConversationState {
     IDLE,           // Ready to record
-    RECORDING,      // Recording user's voice
+    RECORDING,      // Recording user's voice (via Agora)
     TRANSCRIBING,   // Converting audio to text
     ASKING,         // Getting AI response
     SPEAKING,       // Converting AI text to speech
     PLAYING,        // Playing AI voice
     ERROR           // Error occurred
 }
-

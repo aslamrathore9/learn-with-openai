@@ -48,6 +48,10 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    defaultConfig {
+        buildConfigField("String", "AGORA_APP_ID", "\"${project.findProperty("AGORA_APP_ID")}\"")
+    }
 }
 
 dependencies {
@@ -74,5 +78,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
+
+    // Agora RTC SDK for real-time audio streaming
+    implementation(libs.agora.rtc)
 
 }
