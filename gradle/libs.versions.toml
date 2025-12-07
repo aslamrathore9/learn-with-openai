@@ -25,6 +25,7 @@ kotlinxSerializationJson = "1.7.3"
 media3 = "1.2.1"
 okhttpVersion = "5.3.2"
 retrofit = "2.9.0"
+agoraRtc = "4.4.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -58,6 +59,7 @@ logging-interceptor = { module = "com.squareup.okhttp3:logging-interceptor", ver
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 okhttp-v532 = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttpVersion" }
 retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
+agora-rtc = { module = "io.agora.rtc:agora-rtc-sdk", version.ref = "agoraRtc" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
