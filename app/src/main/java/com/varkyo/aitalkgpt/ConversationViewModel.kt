@@ -165,12 +165,41 @@ class ConversationViewModel(
     }
 
     fun endCall() {
-        agoraAudioManager.leaveChannel()
-        apiClient.disconnectRealtime()
-        audioPlayer.stop()
+        Log.d("ConversationViewModel", "🛑 End call requested - cleaning up...")
+        
+        // Immediately transition to Idle state to update UI
         _callState.value = CallState.Idle
+        
+        // Reset all state variables
         currentAiText = ""
         isAiSpeaking = false
+        conversationHistory.clear()
+        _callDurationSeconds.value = 0L
+        callStartTime = 0L
+        
+        // Clean up resources in order
+        try {
+            audioPlayer.stop()
+            Log.d("ConversationViewModel", "✅ AudioPlayer stopped")
+        } catch (e: Exception) {
+            Log.e("ConversationViewModel", "Error stopping audio player", e)
+        }
+        
+        try {
+            apiClient.disconnectRealtime()
+            Log.d("ConversationViewModel", "✅ WebSocket disconnected")
+        } catch (e: Exception) {
+            Log.e("ConversationViewModel", "Error disconnecting WebSocket", e)
+        }
+        
+        try {
+            agoraAudioManager.leaveChannel()
+            Log.d("ConversationViewModel", "✅ Agora channel left")
+        } catch (e: Exception) {
+            Log.e("ConversationViewModel", "Error leaving Agora channel", e)
+        }
+        
+        Log.d("ConversationViewModel", "✅ Call ended successfully")
     }
     
     override fun onCleared() {

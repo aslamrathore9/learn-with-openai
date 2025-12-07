@@ -210,19 +210,40 @@ class AudioPlayer(private val context: Context) {
     }
 
     fun stop() {
-        Log.d("AudioPlayer", "Stopping player")
+        Log.d("AudioPlayer", "🛑 Stopping all audio playback...")
+        
+        // Stop ExoPlayer
         try {
-            exoPlayer?.stop()
-            exoPlayer?.release()
+            exoPlayer?.let { player ->
+                player.stop()
+                player.release()
+                Log.d("AudioPlayer", "✅ ExoPlayer stopped and released")
+            }
             exoPlayer = null
-            
-            audioTrack?.stop()
-            audioTrack?.flush()
-            audioTrack?.release()
+        } catch (e: Exception) {
+            Log.e("AudioPlayer", "Error stopping ExoPlayer", e)
+            exoPlayer = null
+        }
+        
+        // Stop AudioTrack
+        try {
+            audioTrack?.let { track ->
+                if (track.playState == android.media.AudioTrack.PLAYSTATE_PLAYING) {
+                    track.pause()
+                    track.flush()
+                }
+                track.stop()
+                track.release()
+                Log.d("AudioPlayer", "✅ AudioTrack stopped and released")
+            }
             audioTrack = null
             isAudioTrackInitialized = false
         } catch (e: Exception) {
-            Log.e("AudioPlayer", "Error stopping", e)
+            Log.e("AudioPlayer", "Error stopping AudioTrack", e)
+            audioTrack = null
+            isAudioTrackInitialized = false
         }
+        
+        Log.d("AudioPlayer", "✅ All audio resources cleaned up")
     }
 }
