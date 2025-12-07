@@ -6,22 +6,26 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.varkyo.aitalkgpt.ui.theme.AiTalkGptTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -39,339 +43,546 @@ class MainActivity : ComponentActivity() {
         requestPermission.launch(Manifest.permission.RECORD_AUDIO)
 
         setContent {
-            MaterialTheme {
-                ConversationScreen()
+            AiTalkGptTheme {
+                AppContent()
             }
         }
     }
 }
 
 @Composable
-fun ConversationScreen() {
-    val viewModel: ConversationViewModel = viewModel { ConversationViewModel() }
+fun AppContent() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val viewModel: ConversationViewModel = viewModel(
+        factory = ConversationViewModel.Factory(context.applicationContext)
+    )
 
-    val state by viewModel.state.collectAsState()
-    val userText by viewModel.userText.collectAsState()
-    val correctedText by viewModel.correctedText.collectAsState()
-    val aiReply by viewModel.aiReply.collectAsState()
-    val error by viewModel.error.collectAsState()
+    val callState by viewModel.callState.collectAsState()
 
-    Column(
+    // Navigate between screens based on CallState
+    when (val state = callState) {
+        is CallState.Idle -> CallScreen(onStartCall = { viewModel.startCall() })
+        is CallState.Connecting -> CallScreen(isConnecting = true, onCancel = { viewModel.endCall() })
+        is CallState.Listening -> ListeningScreen(
+            state = state,
+            onEndCall = { viewModel.endCall() }
+        )
+        is CallState.Speaking -> SpeakingScreen(
+            state = state,
+            onEndCall = { viewModel.endCall() }
+        )
+        is CallState.Error -> ErrorScreen(
+            message = state.message,
+            onRetry = { viewModel.startCall() }
+        )
+    }
+}
+
+// ==================== CALL SCREEN ====================
+@Composable
+fun CallScreen(
+    isConnecting: Boolean = false,
+    onStartCall: () -> Unit = {},
+    onCancel: () -> Unit = {}
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scale"
+    )
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp)
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Title
-        Text(
-            text = "English Learning Call",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Call timer (show during entire conversation)
-        if (state != ConversationState.IDLE && state != ConversationState.ERROR) {
-            val callDuration by viewModel.callDurationSeconds.collectAsState()
-            CallTimer(callDuration = callDuration)
-        }
-
-        // Status indicator
-        StatusCard(state = state)
-
-        // Error message
-        error?.let { errorMessage ->
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer
-                )
-            ) {
-                Text(
-                    text = "Error: $errorMessage",
-                    modifier = Modifier.padding(16.dp),
-                    color = MaterialTheme.colorScheme.onErrorContainer
-                )
-            }
-        }
-
-        // User's transcribed text (original from Whisper)
-        if (userText != null) {
-            ConversationCard(
-                title = "You said:",
-                text = userText!!,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-
-        // Corrected sentence
-        if (correctedText != null) {
-            ConversationCard(
-                title = "Corrected:",
-                text = correctedText!!,
-                modifier = Modifier.fillMaxWidth(),
-                isAI = false,
-                isCorrected = true
-            )
-        }
-
-        // AI's reply
-        if (aiReply != null) {
-            ConversationCard(
-                title = "Reply:",
-                text = aiReply!!,
-                modifier = Modifier.fillMaxWidth(),
-                isAI = true
-            )
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        // Call button
-        CallButton(
-            state = state,
-            onStartCall = { viewModel.startCall() },
-            onStopCall = { viewModel.stopCall() },
-            onRetry = { viewModel.retry() },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-@Composable
-fun CallTimer(callDuration: Long) {
-    val minutes = callDuration / 60
-    val seconds = callDuration % 60
-    val timeText = String.format("%02d:%02d", minutes, seconds)
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF44336).copy(alpha = 0.1f)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .background(
-                        color = Color(0xFFF44336),
-                        shape = RoundedCornerShape(50)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF1E88E5),
+                        Color(0xFF1565C0)
                     )
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Call in progress: $timeText",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFFF44336)
-            )
-        }
-    }
-}
-
-@Composable
-fun StatusCard(state: ConversationState) {
-    val (statusText, statusColor) = when (state) {
-        ConversationState.IDLE -> "Ready to call" to Color(0xFF4CAF50)
-        ConversationState.RECORDING -> "Listening... (speak naturally)" to Color(0xFFF44336)
-        ConversationState.TRANSCRIBING -> "Understanding your speech..." to Color(0xFFFF9800)
-        ConversationState.ASKING -> "Tutor is responding..." to Color(0xFF2196F3)
-        ConversationState.SPEAKING -> "Preparing response..." to Color(0xFF9C27B0)
-        ConversationState.PLAYING -> "Tutor is speaking..." to Color(0xFF00BCD4)
-        ConversationState.ERROR -> "Error occurred" to Color(0xFFF44336)
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = statusColor.copy(alpha = 0.1f)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .background(
-                        color = statusColor,
-                        shape = RoundedCornerShape(50)
-                    )
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = statusText,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium
-            )
-        }
-    }
-}
-
-@Composable
-fun ConversationCard(
-    title: String,
-    text: String,
-    modifier: Modifier = Modifier,
-    isAI: Boolean = false,
-    isCorrected: Boolean = false
-) {
-    // Determine card color based on type
-    val containerColor = when {
-        isAI -> MaterialTheme.colorScheme.primaryContainer
-        isCorrected -> MaterialTheme.colorScheme.secondaryContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant
-    }
-
-    val onContainerColor = when {
-        isAI -> MaterialTheme.colorScheme.onPrimaryContainer
-        isCorrected -> MaterialTheme.colorScheme.onSecondaryContainer
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(
-            containerColor = containerColor
-        )
+                )
+            ),
+        contentAlignment = Alignment.Center
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(32.dp)
         ) {
+            // Title
             Text(
-                text = title,
-                style = MaterialTheme.typography.labelMedium,
+                text = "English Learning",
+                fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
-                color = onContainerColor
+                color = Color.White
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodyLarge,
-                color = onContainerColor
-            )
+
+            Spacer(modifier = Modifier.height(40.dp))
+
+            if (isConnecting) {
+                // Connecting animation
+                Box(
+                    modifier = Modifier.size(200.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Pulsing circles
+                    Box(
+                        modifier = Modifier
+                            .size(200.dp * scale)
+                            .background(
+                                color = Color.White.copy(alpha = 0.2f),
+                                shape = CircleShape
+                            )
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(150.dp)
+                            .background(
+                                color = Color.White.copy(alpha = 0.3f),
+                                shape = CircleShape
+                            )
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(100.dp)
+                            .background(
+                                color = Color.White,
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Phone,
+                            contentDescription = "Calling",
+                            modifier = Modifier.size(48.dp),
+                            tint = Color(0xFF1565C0)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(
+                    text = "Connecting...",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                CircularProgressIndicator(
+                    color = Color.White,
+                    modifier = Modifier.size(40.dp)
+                )
+
+                Spacer(modifier = Modifier.height(40.dp))
+
+                // Cancel button
+                OutlinedButton(
+                    onClick = onCancel,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .width(200.dp)
+                        .height(56.dp)
+                ) {
+                    Text("Cancel", fontSize = 18.sp)
+                }
+            } else {
+                // Call button
+                FloatingActionButton(
+                    onClick = onStartCall,
+                    modifier = Modifier.size(120.dp),
+                    containerColor = Color.White,
+                    contentColor = Color(0xFF4CAF50)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Phone,
+                        contentDescription = "Start Call",
+                        modifier = Modifier.size(56.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Tap to start conversation",
+                    fontSize = 18.sp,
+                    color = Color.White.copy(alpha = 0.9f)
+                )
+            }
         }
     }
 }
 
+// ==================== LISTENING SCREEN ====================
 @Composable
-fun CallButton(
-    state: ConversationState,
-    onStartCall: () -> Unit,
-    onStopCall: () -> Unit,
-    onRetry: () -> Unit,
-    modifier: Modifier = Modifier
+fun ListeningScreen(
+    state: CallState.Listening,
+    onEndCall: () -> Unit
 ) {
-    when (state) {
-        ConversationState.IDLE -> {
-            Button(
-                onClick = onStartCall,
-                modifier = modifier.height(64.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF4CAF50)
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val micScale by infiniteTransition.animateFloat(
+        initialValue = if (state.isUserSpeaking) 1f else 0.9f,
+        targetValue = if (state.isUserSpeaking) 1.2f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "micScale"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF4CAF50),
+                        Color(0xFF388E3C)
+                    )
                 )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+            modifier = Modifier.padding(32.dp)
+        ) {
+            // Listening text
+            Text(
+                text = "Listening...",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            Spacer(modifier = Modifier.height(40.dp))
+
+            // Animated microphone icon
+            Box(
+                modifier = Modifier
+                    .size(150.dp)
+                    .scale(micScale)
+                    .background(
+                        color = Color.White.copy(alpha = 0.3f),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Phone,
-                    contentDescription = "Call",
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "Call",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                    imageVector = Icons.Filled.AddCircle,
+                    contentDescription = "Microphone",
+                    modifier = Modifier.size(80.dp),
+                    tint = Color.White
                 )
             }
-        }
-        ConversationState.RECORDING -> {
-            // Show call button with stop option during recording
-            Button(
-                onClick = onStopCall,
-                modifier = modifier.height(64.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // User transcript (if available)
+            if (state.userTranscript.isNotEmpty()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White.copy(alpha = 0.2f)
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp)
+                    ) {
+                        Text(
+                            text = "You said:",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = state.userTranscript,
+                            fontSize = 18.sp,
+                            color = Color.White,
+                            lineHeight = 24.sp
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    text = "Speak naturally...",
+                    fontSize = 18.sp,
+                    color = Color.White.copy(alpha = 0.8f)
                 )
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // End Call button
+            Button(
+                onClick = onEndCall,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .padding(horizontal = 32.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFF44336)
+                ),
+                shape = RoundedCornerShape(32.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.Clear,
                     contentDescription = "End Call",
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(28.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    "End Call",
-                    style = MaterialTheme.typography.titleLarge,
+                    text = "End Call",
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
+
+            Spacer(modifier = Modifier.height(32.dp))
         }
-        ConversationState.PLAYING -> {
-            // Show stop button during playback too
-            Button(
-                onClick = onStopCall,
-                modifier = modifier.height(64.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error
+    }
+}
+
+// ==================== SPEAKING SCREEN ====================
+@Composable
+fun SpeakingScreen(
+    state: CallState.Speaking,
+    onEndCall: () -> Unit
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "wave")
+    val waveScale by infiniteTransition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "waveScale"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF2196F3),
+                        Color(0xFF1976D2)
+                    )
                 )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+            modifier = Modifier.padding(32.dp)
+        ) {
+            // Speaking text
+            Text(
+                text = "AI is speaking...",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            Spacer(modifier = Modifier.height(40.dp))
+
+            // Animated sound waves
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                repeat(5) { index ->
+                    val delay = index * 100
+                    val animatedScale by infiniteTransition.animateFloat(
+                        initialValue = 0.5f,
+                        targetValue = 1.5f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(
+                                durationMillis = 800,
+                                delayMillis = delay,
+                                easing = FastOutSlowInEasing
+                            ),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "wave$index"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .width(12.dp)
+                            .height(60.dp * animatedScale)
+                            .background(
+                                color = Color.White,
+                                shape = RoundedCornerShape(6.dp)
+                            )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(40.dp))
+
+            // AI text display (streaming)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .heightIn(min = 150.dp, max = 300.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.White.copy(alpha = 0.15f)
+                ),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (state.aiText.isNotEmpty()) {
+                        Text(
+                            text = state.aiText,
+                            fontSize = 20.sp,
+                            color = Color.White,
+                            lineHeight = 28.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // End Call button
+            Button(
+                onClick = onEndCall,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .padding(horizontal = 32.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFF44336)
+                ),
+                shape = RoundedCornerShape(32.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.Clear,
                     contentDescription = "End Call",
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(28.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    "End Call",
-                    style = MaterialTheme.typography.titleLarge,
+                    text = "End Call",
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
+
+            Spacer(modifier = Modifier.height(32.dp))
         }
-        ConversationState.ERROR -> {
+    }
+}
+
+// ==================== ERROR SCREEN ====================
+@Composable
+fun ErrorScreen(
+    message: String,
+    onRetry: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFFF44336),
+                        Color(0xFFD32F2F)
+                    )
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+            modifier = Modifier.padding(32.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Clear,
+                contentDescription = "Error",
+                modifier = Modifier.size(80.dp),
+                tint = Color.White
+            )
+
+            Text(
+                text = "Connection Error",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.White.copy(alpha = 0.2f)
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text(
+                    text = message,
+                    fontSize = 16.sp,
+                    color = Color.White,
+                    modifier = Modifier.padding(20.dp),
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             Button(
                 onClick = onRetry,
-                modifier = modifier.height(64.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .padding(horizontal = 32.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondary
-                )
-            ) {
-                Text("Retry Call", style = MaterialTheme.typography.titleMedium)
-            }
-        }
-        else -> {
-            // Show "End Call" button during other processing states (TRANSCRIBING, ASKING, SPEAKING)
-            Button(
-                onClick = onStopCall,
-                modifier = modifier.height(64.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error
-                )
+                    containerColor = Color.White
+                ),
+                shape = RoundedCornerShape(32.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Clear,
-                    contentDescription = "End Call",
-                    modifier = Modifier.size(24.dp)
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "Retry",
+                    modifier = Modifier.size(28.dp),
+                    tint = Color(0xFFF44336)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    "End Call",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                    text = "Retry",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFF44336)
                 )
             }
         }

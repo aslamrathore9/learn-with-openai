@@ -29,31 +29,27 @@ class ApiClient(
     private val serverBaseUrl: String = "https://my-server-openai.onrender.com"
 ) {
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
         .build()
-    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
-
+    
+    private val jsonMediaType = "application/json".toMediaType()
+    
     /**
-     * Transcribe audio to text using backend whisper API
-     * POST {serverBaseUrl}/transcribe (multipart/form-data)
-     * @param audioData PCM audio bytes (16-bit, 16kHz, mono)
+     * Transcribe audio using backend API
+     * POST {serverBaseUrl}/transcribe
+     * @param audioData PCM audio bytes
      * @return Transcribed text
      */
     suspend fun transcribe(audioData: ByteArray): Result<String> = withContext(Dispatchers.IO) {
-        var tempFile: File? = null
         try {
-            // Convert PCM to WAV format
             val wavData = convertPcmToWav(audioData, sampleRate = 16000)
             
-            // Validate file size before uploading (5 MB limit for fast uploads)
-            val MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
-            if (wavData.size > MAX_FILE_SIZE) {
-                val estimatedDuration = (wavData.size / 32000).toInt() // Rough estimate: 16kHz mono = 32KB/second
-                Log.e("ApiClient", "Audio file too large: ${wavData.size / 1024} KB (~${estimatedDuration}s)")
+            // Check file size (limit to ~1MB for faster upload)
+            if (wavData.size > 1024 * 1024) {
                 return@withContext Result.failure(
-                    IOException("Audio file too large (${wavData.size / 1024} KB, ~${estimatedDuration}s). Please record shorter clips (max 30 seconds).")
+                    IOException("Audio file too large (${wavData.size / 1024} KB). Please record shorter clips (max 30 seconds).")
                 )
             }
             
@@ -61,15 +57,12 @@ class ApiClient(
             Log.d("ApiClient", "Uploading audio: ${wavData.size / 1024} KB (~${String.format("%.1f", estimatedDuration)}s)")
             
             // Create temp WAV file
-            tempFile = File.createTempFile("audio_", ".wav")
-            FileOutputStream(tempFile).use { it.write(wavData) }
-
             val requestBody = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart(
                     "audio",
                     "audio.wav",
-                    tempFile.asRequestBody("audio/wav".toMediaType())
+                    wavData.toRequestBody("audio/wav".toMediaType())
                 )
                 .build()
 
@@ -90,8 +83,6 @@ class ApiClient(
             Result.success(text)
         } catch (e: Exception) {
             Result.failure(e)
-        } finally {
-            tempFile?.delete()
         }
     }
 
@@ -141,6 +132,186 @@ class ApiClient(
     }
 
     /**
+     * Get Agora Token from server
+     * GET {serverBaseUrl}/agora/token?channelName=...&uid=...
+     */
+    suspend fun getToken(channelName: String, uid: Int): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$serverBaseUrl/agora/token?channelName=$channelName&uid=$uid")
+                .get()
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                // Fallback Token for debugging when server is unreachable
+                 val fallbackToken = "0064b319c885d854bcb984b0efb6553f1c1IACJLMLpiqimZ0DwWbS5ux7yis4p3PlF8K8mwPI1M3WXPab4ks0AAAAAIgB8sDiUYpg1aQQAAQDyVDRpAgDyVDRpAwDyVDRpBADyVDRp"
+                 Log.w("ApiClient", "⚠️ Server Token Failed (${response.code}). Using Fallback Token.")
+                 return@withContext Result.success(fallbackToken)
+            }
+
+            val body = response.body?.string() ?: ""
+            val json = JSONObject(body)
+            val token = json.optString("token", null)
+            
+            if (token != null) {
+                Log.d("ApiClient", "✅ Received Agora Token: $token")
+                Result.success(token)
+            } else {
+                Log.d("ApiClient", "✅ Received Agora Token: dd")
+
+                Result.failure(IOException("Token not found in response"))
+            }
+        } catch (e: Exception) {
+            // Fallback Token for debugging when server throws exception
+             val fallbackToken = "0064b319c885d854bcb984b0efb6553f1c1IACJLMLpiqimZ0DwWbS5ux7yis4p3PlF8K8mwPI1M3WXPab4ks0AAAAAIgB8sDiUYpg1aQQAAQDyVDRpAgDyVDRpAwDyVDRpBADyVDRp"
+             Log.w("ApiClient", "⚠️ Server Exception (${e.message}). Using Fallback Token.")
+             Result.success(fallbackToken)
+        }
+    }
+
+    /**
+     * Single-shot conversation: Audio -> Audio (Lowest Latency)
+     * POST {serverBaseUrl}/converse
+     * @return Triple<UserText, ReplyText?, InputStream>
+     */
+    suspend fun converse(
+        audioData: ByteArray, 
+        conversationHistory: List<Pair<String, String>> = emptyList()
+    ): Result<Triple<String, String?, java.io.InputStream>> = withContext(Dispatchers.IO) {
+        try {
+            val wavData = convertPcmToWav(audioData, sampleRate = 16000)
+            
+            // Build Multipart Request
+            val historyArray = org.json.JSONArray().apply {
+                for ((user, ai) in conversationHistory) {
+                    put(JSONObject().apply {
+                        put("user", user)
+                        put("ai", ai)
+                    })
+                }
+            }
+
+            val requestBody = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("audio", "audio.wav", wavData.toRequestBody("audio/wav".toMediaType()))
+                .addFormDataPart("conversationHistory", historyArray.toString())
+                .build()
+
+            val request = Request.Builder()
+                .url("$serverBaseUrl/converse")
+                .post(requestBody)
+                .build()
+                
+            Log.d("ApiClient", "Sending Converse request (One-Shot)...")
+            
+            val response = client.newCall(request).execute()
+            
+            if (!response.isSuccessful) {
+                val errorBody = response.body?.string() ?: "Unknown error"
+                return@withContext Result.failure(IOException("Converse failed: ${response.code} - $errorBody"))
+            }
+
+            // Extract Transcript from Header
+            var userText = ""
+            val transcriptB64 = response.header("X-Transcript-B64")
+            if (transcriptB64 != null) {
+                try {
+                     userText = String(android.util.Base64.decode(transcriptB64, android.util.Base64.DEFAULT), Charsets.UTF_8)
+                     Log.d("ApiClient", "Received Transcript Header: $userText")
+                } catch (e: Exception) {
+                    Log.e("ApiClient", "Failed to decode transcript header", e)
+                }
+            } else {
+                Log.w("ApiClient", "No transcript header found")
+            }
+
+            val stream = response.body?.byteStream()
+            if (stream == null) {
+                return@withContext Result.failure(IOException("Empty audio stream"))
+            }
+
+            Log.d("ApiClient", "✅ Received Audio Stream (Converse)")
+            // We don't get 'Reply' text back in header currently (generated later), so return null. 
+            // The UI will play audio.
+            Result.success(Triple(userText, null, stream))
+
+        } catch (e: Exception) {
+            Log.e("ApiClient", "Converse error", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Combined Chat + Stream Audio (Lower Latency)
+     * POST {serverBaseUrl}/chat-audio-stream
+     * @return Pair<CorrectionResponse?, InputStream>
+     */
+    suspend fun chatAndStreamAudio(
+        userText: String, 
+        conversationHistory: List<Pair<String, String>> = emptyList()
+    ): Result<Pair<CorrectionResponse?, java.io.InputStream>> = withContext(Dispatchers.IO) {
+        try {
+            // Prepare JSON body
+            val historyArray = org.json.JSONArray().apply {
+                for ((user, ai) in conversationHistory) {
+                    put(JSONObject().apply {
+                        put("user", user)
+                        put("ai", ai)
+                    })
+                }
+            }
+            val requestBodyJson = JSONObject().apply {
+                put("userText", userText)
+                put("conversationHistory", historyArray)
+            }
+            
+            val request = Request.Builder()
+                .url("$serverBaseUrl/chat-audio-stream")
+                .addHeader("Content-Type", "application/json")
+                .post(requestBodyJson.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            Log.d("ApiClient", "Sending Smart Stream request: \"$userText\"")
+            
+            val response = client.newCall(request).execute()
+
+            if (!response.isSuccessful) {
+                val errorBody = response.body?.string() ?: "Unknown error"
+                return@withContext Result.failure(IOException("Stream failed: ${response.code} - $errorBody"))
+            }
+
+            // Extract "Corrected" text from Header (X-Corrected-Text-B64)
+            var correctionResponse: CorrectionResponse? = null
+            val correctedB64 = response.header("X-Corrected-Text-B64")
+            if (correctedB64 != null) {
+                try {
+                    val decodedBytes = android.util.Base64.decode(correctedB64, android.util.Base64.DEFAULT)
+                    val correctedText = String(decodedBytes, Charsets.UTF_8)
+                    Log.d("ApiClient", "Received Corrected Header: $correctedText")
+                    // We don't get the "Reply" text easily in the header, relying on audio for that.
+                    // Construct a partial response
+                    correctionResponse = CorrectionResponse(correctedText, "(Audio Reply)")
+                } catch (e: Exception) {
+                    Log.e("ApiClient", "Failed to decode header", e)
+                }
+            }
+
+            val stream = response.body?.byteStream()
+            if (stream == null) {
+                return@withContext Result.failure(IOException("Empty audio stream"))
+            }
+
+            Log.d("ApiClient", "✅ Received Audio Stream (Smart)")
+            Result.success(Pair(correctionResponse, stream))
+            
+        } catch (e: Exception) {
+            Log.e("ApiClient", "Smart Stream error", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Convert text to speech using OpenAI TTS API
      * POST https://api.openai.com/v1/audio/speech
      * @param text Text to convert to speech
@@ -152,7 +323,13 @@ class ApiClient(
      * @param text Text to convert to speech
      * @return MP3 audio bytes
      */
-    suspend fun speak(text: String): Result<ByteArray> = withContext(Dispatchers.IO) {
+    /**
+     * Convert text to speech using backend TTS API (Streaming)
+     * POST {serverBaseUrl}/tts
+     * @param text Text to convert to speech
+     * @return InputStream of MP3 audio
+     */
+    suspend fun speak(text: String): Result<java.io.InputStream> = withContext(Dispatchers.IO) {
         try {
             // Build TTS request to backend server
             val requestBody = JSONObject().apply {
@@ -168,6 +345,8 @@ class ApiClient(
                 .build()
 
             Log.d("ApiClient", "Sending TTS request to server for text: \"$text\"")
+            
+            // Execute as stream (do not use .execute() which buffers, wait... execute() buffers headers but .body?.byteStream() streams content)
             val response = client.newCall(request).execute()
 
             if (!response.isSuccessful) {
@@ -178,15 +357,15 @@ class ApiClient(
                 )
             }
 
-            // Backend returns audio/mpeg directly (not JSON)
-            val audioBytes = response.body?.bytes() ?: ByteArray(0)
-
-            if (audioBytes.isEmpty()) {
-                return@withContext Result.failure(IOException("Empty audio response"))
+            // Return the raw stream (Caller must close it!)
+            val stream = response.body?.byteStream()
+            
+            if (stream == null) {
+                 return@withContext Result.failure(IOException("Empty audio stream"))
             }
 
-            Log.d("ApiClient", "✅ Received MP3 audio: ${audioBytes.size} bytes")
-            Result.success(audioBytes)
+            Log.d("ApiClient", "✅ Received Audio Stream (Header OK)")
+            Result.success(stream)
         } catch (e: Exception) {
             Log.e("ApiClient", "Speak error", e)
             Result.failure(e)
@@ -403,5 +582,154 @@ class ApiClient(
     private fun writeShort(buffer: ByteArray, offset: Int, value: Int) {
         buffer[offset] = (value and 0xFF).toByte()
         buffer[offset + 1] = ((value shr 8) and 0xFF).toByte()
+    }
+
+    // ==========================================
+    // REALTIME API (WebSocket)
+    // ==========================================
+    
+    interface RealtimeCallback {
+        fun onAudioDelta(base64Audio: String)
+        fun onUserTranscript(text: String)
+        fun onAiTranscript(text: String)
+        fun onResponseComplete()  // NEW: Called when AI finishes speaking
+        fun onError(msg: String)
+    }
+
+    private var webSocket: WebSocket? = null
+    
+    fun connectRealtime(callback: RealtimeCallback) {
+        // Convert HTTP/HTTPS to WS/WSS properly
+        val wsUrl = when {
+            serverBaseUrl.startsWith("https://") -> serverBaseUrl.replace("https://", "wss://")
+            serverBaseUrl.startsWith("http://") -> serverBaseUrl.replace("http://", "ws://")
+            else -> "ws://$serverBaseUrl"
+        } + "/"
+        
+        Log.d("ApiClient", "🔌 Connecting to WebSocket: $wsUrl")
+        
+        val request = Request.Builder()
+            .url(wsUrl)
+            .build()
+            
+        webSocket = client.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                Log.d("ApiClient", "✅ WebSocket Connected successfully!")
+            }
+
+
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                try {
+                    // Log ALL messages to see what we're receiving
+                    Log.d("ApiClient", "📨 WebSocket message received: ${text.take(200)}...")
+                    
+                    val event = JSONObject(text)
+                    val eventType = event.optString("type")
+                    
+                    Log.d("ApiClient", "Event type: $eventType")
+                    
+                    when (eventType) {
+                        "response.audio.delta" -> {
+                            val b64 = event.optString("delta")
+                            Log.d("ApiClient", "🔊 Audio delta received: ${b64.length} chars")
+                            if (b64.isNotEmpty()) callback.onAudioDelta(b64)
+                        }
+                        "conversation.item.input_audio_transcription.completed" -> {
+                            // User speech transcribed
+                            val txt = event.optString("transcript")
+                            Log.d("ApiClient", "📝 User transcript event: $txt")
+                            if (txt.isNotEmpty()) callback.onUserTranscript(txt)
+                        }
+                        "response.audio_transcript.delta" -> {
+                            // AI speech (streaming text)
+                            val txt = event.optString("delta")
+                            Log.d("ApiClient", "🤖 AI transcript delta: $txt")
+                            if (txt.isNotEmpty()) callback.onAiTranscript(txt)
+                        }
+                        "error" -> {
+                            Log.e("ApiClient", "❌ Realtime Error from Server: $text")
+                            callback.onError("Server error: ${event.optString("message")}")
+                        }
+                        "response.audio.done" -> {
+                            // AI finished speaking - notify immediately
+                            Log.d("ApiClient", "✅ AI audio complete - triggering callback")
+                            callback.onResponseComplete()
+                        }
+                        "response.done" -> {
+                            // Check if response failed
+                            val response = event.optJSONObject("response")
+                            val status = response?.optString("status")
+                            if (status == "failed") {
+                                val statusDetails = response.optJSONObject("status_details")
+                                val errorObj = statusDetails?.optJSONObject("error")
+                                val errorType = errorObj?.optString("type")
+                                val errorMessage = errorObj?.optString("message")
+                                val errorCode = errorObj?.optString("code")
+                                
+                                Log.e("ApiClient", "❌ OpenAI Response FAILED!")
+                                Log.e("ApiClient", "Error Type: $errorType")
+                                Log.e("ApiClient", "Error Code: $errorCode")
+                                Log.e("ApiClient", "Error Message: $errorMessage")
+                                Log.e("ApiClient", "Full response.done: $text")
+                                
+                                callback.onError("OpenAI Error: $errorMessage")
+                            } else {
+                                Log.d("ApiClient", "✅ Response completed successfully")
+                            }
+                        }
+                        else -> {
+                            // Log other event types we might be missing
+                            Log.d("ApiClient", "ℹ️ Unhandled event type: $eventType")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("ApiClient", "❌ WS Parse Error: ${e.message}", e)
+                    Log.e("ApiClient", "Raw message: $text")
+                }
+            }
+            
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                Log.e("ApiClient", "❌ WebSocket Connection Failed!")
+                Log.e("ApiClient", "Error: ${t.message}", t)
+                Log.e("ApiClient", "Response: ${response?.code} - ${response?.message}")
+                callback.onError(t.message ?: "WebSocket connection failed")
+            }
+            
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                Log.d("ApiClient", "⚠️ WebSocket Closing: code=$code, reason=$reason")
+            }
+            
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                Log.d("ApiClient", "🔌 WebSocket Closed: code=$code, reason=$reason")
+            }
+        })
+    }
+    
+    
+    private var audioChunkCount = 0
+    
+    fun sendRealtimeAudio(bytes: ByteArray) {
+        if (webSocket == null) {
+            if (audioChunkCount % 100 == 0) {
+                Log.w("ApiClient", "⚠️ Cannot send audio: WebSocket is null (chunk #$audioChunkCount)")
+            }
+            audioChunkCount++
+            return
+        }
+        
+        // Send raw bytes (Server handles sticking it into input_audio_buffer.append)
+        // Note: Our Server expects BINARY message for audio chunks.
+        val byteString = okio.ByteString.of(*bytes)
+        val success = webSocket?.send(byteString) ?: false
+        
+        if (audioChunkCount % 100 == 0) {
+            Log.d("ApiClient", "📤 Sent audio chunk #$audioChunkCount (${bytes.size} bytes) - success: $success")
+        }
+        audioChunkCount++
+    }
+    
+    fun disconnectRealtime() {
+        webSocket?.close(1000, "User ended call")
+        webSocket = null
     }
 }

@@ -74,5 +74,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.androidx.media3.exoplayer)
 
+    // Agora SDK
+    implementation("io.agora.rtc:full-sdk:4.6.0")
 }

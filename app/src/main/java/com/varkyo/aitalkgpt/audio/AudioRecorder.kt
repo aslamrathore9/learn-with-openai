@@ -18,8 +18,8 @@ import kotlin.math.sqrt
 class AudioRecorder(
     private val sampleRate: Int = 16000,
     private val silenceThresholdDb: Float = -45f, // dB threshold for silence (lower = more sensitive, increased sensitivity)
-    private val silenceDurationMs: Long = 1500, // Stop after 1.5s of silence (more time before stopping)
-    private val minRecordingDurationMs: Long = 800, // Minimum recording duration (increased to capture more)
+    private val silenceDurationMs: Long = 700, // Stop after 700ms of silence (optimized for speed)
+    private val minRecordingDurationMs: Long = 400, // Minimum recording duration (captured faster)
     private val maxRecordingDurationMs: Long = 30000 // Maximum recording duration (30 seconds for optimal upload speed)
 ) {
     private var audioRecord: AudioRecord? = null

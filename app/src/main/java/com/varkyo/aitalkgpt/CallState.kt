@@ -1,0 +1,25 @@
+package com.varkyo.aitalkgpt
+
+/**
+ * Represents the different states of the call flow
+ */
+sealed class CallState {
+    // Call Screen states
+    object Idle : CallState()
+    object Connecting : CallState()
+    
+    // Listening Screen state
+    data class Listening(
+        val isUserSpeaking: Boolean = false,
+        val userTranscript: String = ""
+    ) : CallState()
+    
+    // Speaking Screen state
+    data class Speaking(
+        val aiText: String = "",
+        val isComplete: Boolean = false
+    ) : CallState()
+    
+    // Error state
+    data class Error(val message: String) : CallState()
+}
