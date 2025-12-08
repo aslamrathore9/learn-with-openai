@@ -7,7 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.varkyo.aitalkgpt.api.ApiClient
 import com.varkyo.aitalkgpt.audio.AudioPlayer
-import com.varkyo.aitalkgpt.audio.AgoraAudioManager
+import com.varkyo.aitalkgpt.audio.AudioRecorder
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,7 +26,7 @@ class ConversationViewModel(
 ) : ViewModel() {
 
     // Managers
-    private val agoraAudioManager = AgoraAudioManager(context)
+    private val audioRecorder = AudioRecorder(context)
     private val apiClient = ApiClient(serverBaseUrl)
     private val audioPlayer = AudioPlayer(context)
 
@@ -47,17 +47,14 @@ class ConversationViewModel(
 
     init {
         // Observe Audio from Agora
-        agoraAudioManager.onAudioDataReceived = { data ->
+        // Observe Audio from Native Recorder
+        audioRecorder.onAudioDataReceived = { data ->
              val currentState = _callState.value
              
              // ONLY send audio when in Listening state and AI is NOT speaking
-             // This prevents the AI's voice (played through AudioTrack) from being
-             // picked up by the microphone and sent back to the server
              if (currentState is CallState.Listening && !isAiSpeaking) {
                  apiClient.sendRealtimeAudio(data)
              }
-             // When AI is speaking, we don't send mic input to prevent echo/feedback
-             // The OpenAI Realtime API handles turn-taking automatically
         }
     }
     
@@ -134,40 +131,10 @@ class ConversationViewModel(
             }
         })
         
-        fetchTokenAndJoin()
-    }
-    
-    private fun fetchTokenAndJoin() {
-        viewModelScope.launch {
-            val channelName = "conversation_v1"
-            val uid = (System.currentTimeMillis() % 100000).toInt() + 1 
-            
-            Log.d("ConversationViewModel", "Fetching Agora token for channel: $channelName, uid: $uid")
-            
-            val timeoutJob = launch {
-                kotlinx.coroutines.delay(30000)
-                if (_callState.value is CallState.Connecting) {
-                    Log.e("ConversationViewModel", "❌ Connection timed out")
-                    _callState.value = CallState.Error("Connection timed out. Please check your internet or try again.")
-                }
-            }
-
-            val result = apiClient.getToken(channelName, uid)
-            timeoutJob.cancel()
-            
-            result.onSuccess { token ->
-                Log.d("ConversationViewModel", "✅ Token received, joining channel...")
-                agoraAudioManager.joinChannel(token, channelName, uid)
-                
-                // Transition to Listening screen
-                _callState.value = CallState.Listening()
-                callStartTime = System.currentTimeMillis()
-                
-            }.onFailure { e ->
-                Log.e("ConversationViewModel", "❌ Failed to get token", e)
-                _callState.value = CallState.Error("Failed to connect: ${e.message}")
-            }
-        }
+        // Direct start - no tokens needed
+        audioRecorder.startRecording()
+        _callState.value = CallState.Listening()
+        callStartTime = System.currentTimeMillis()
     }
 
     fun endCall() {
@@ -202,10 +169,10 @@ class ConversationViewModel(
             }
             
             try {
-                agoraAudioManager.leaveChannel()
-                Log.d("ConversationViewModel", "✅ Agora channel left")
+                audioRecorder.stopRecording()
+                Log.d("ConversationViewModel", "✅ AudioRecorder stopped")
             } catch (e: Exception) {
-                Log.e("ConversationViewModel", "Error leaving Agora channel", e)
+                Log.e("ConversationViewModel", "Error stopping audio recorder", e)
             }
             
             Log.d("ConversationViewModel", "✅ Call ended successfully")
@@ -214,7 +181,7 @@ class ConversationViewModel(
     
     override fun onCleared() {
         super.onCleared()
-        agoraAudioManager.release()
+        audioRecorder.stopRecording()
         audioPlayer.release()
     }
     
