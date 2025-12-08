@@ -328,7 +328,10 @@ fun ListeningScreen(
 
             // End Call button
             Button(
-                onClick = onEndCall,
+                onClick = {
+                    android.util.Log.d("MainActivity", "🔴 End Call button clicked (Listening)")
+                    onEndCall()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp)
@@ -474,7 +477,10 @@ fun SpeakingScreen(
 
             // End Call button
             Button(
-                onClick = onEndCall,
+                onClick = {
+                    android.util.Log.d("MainActivity", "🔴 End Call button clicked (Speaking)")
+                    onEndCall()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp)

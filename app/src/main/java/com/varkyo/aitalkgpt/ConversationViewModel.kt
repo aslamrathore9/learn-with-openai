@@ -48,10 +48,16 @@ class ConversationViewModel(
     init {
         // Observe Audio from Agora
         agoraAudioManager.onAudioDataReceived = { data ->
+             val currentState = _callState.value
+             
              // ONLY send audio when in Listening state and AI is NOT speaking
-             if (_callState.value is CallState.Listening && !isAiSpeaking) {
+             // This prevents the AI's voice (played through AudioTrack) from being
+             // picked up by the microphone and sent back to the server
+             if (currentState is CallState.Listening && !isAiSpeaking) {
                  apiClient.sendRealtimeAudio(data)
              }
+             // When AI is speaking, we don't send mic input to prevent echo/feedback
+             // The OpenAI Realtime API handles turn-taking automatically
         }
     }
     
@@ -165,41 +171,45 @@ class ConversationViewModel(
     }
 
     fun endCall() {
-        Log.d("ConversationViewModel", "🛑 End call requested - cleaning up...")
-        
-        // Immediately transition to Idle state to update UI
-        _callState.value = CallState.Idle
-        
-        // Reset all state variables
-        currentAiText = ""
-        isAiSpeaking = false
-        conversationHistory.clear()
-        _callDurationSeconds.value = 0L
-        callStartTime = 0L
-        
-        // Clean up resources in order
-        try {
-            audioPlayer.stop()
-            Log.d("ConversationViewModel", "✅ AudioPlayer stopped")
-        } catch (e: Exception) {
-            Log.e("ConversationViewModel", "Error stopping audio player", e)
+        viewModelScope.launch {
+            Log.d("ConversationViewModel", "🛑 End call requested - cleaning up...")
+            Log.d("ConversationViewModel", "Current state: ${_callState.value}")
+            
+            // Immediately transition to Idle state to update UI
+            _callState.value = CallState.Idle
+            Log.d("ConversationViewModel", "State changed to: ${_callState.value}")
+            
+            // Reset all state variables
+            currentAiText = ""
+            isAiSpeaking = false
+            conversationHistory.clear()
+            _callDurationSeconds.value = 0L
+            callStartTime = 0L
+            
+            // Clean up resources in order
+            try {
+                audioPlayer.stop()
+                Log.d("ConversationViewModel", "✅ AudioPlayer stopped")
+            } catch (e: Exception) {
+                Log.e("ConversationViewModel", "Error stopping audio player", e)
+            }
+            
+            try {
+                apiClient.disconnectRealtime()
+                Log.d("ConversationViewModel", "✅ WebSocket disconnected")
+            } catch (e: Exception) {
+                Log.e("ConversationViewModel", "Error disconnecting WebSocket", e)
+            }
+            
+            try {
+                agoraAudioManager.leaveChannel()
+                Log.d("ConversationViewModel", "✅ Agora channel left")
+            } catch (e: Exception) {
+                Log.e("ConversationViewModel", "Error leaving Agora channel", e)
+            }
+            
+            Log.d("ConversationViewModel", "✅ Call ended successfully")
         }
-        
-        try {
-            apiClient.disconnectRealtime()
-            Log.d("ConversationViewModel", "✅ WebSocket disconnected")
-        } catch (e: Exception) {
-            Log.e("ConversationViewModel", "Error disconnecting WebSocket", e)
-        }
-        
-        try {
-            agoraAudioManager.leaveChannel()
-            Log.d("ConversationViewModel", "✅ Agora channel left")
-        } catch (e: Exception) {
-            Log.e("ConversationViewModel", "Error leaving Agora channel", e)
-        }
-        
-        Log.d("ConversationViewModel", "✅ Call ended successfully")
     }
     
     override fun onCleared() {

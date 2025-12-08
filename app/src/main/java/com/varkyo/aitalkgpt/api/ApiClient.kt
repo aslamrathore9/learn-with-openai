@@ -207,6 +207,22 @@ class ApiClient(
         audioChunkCount++
     }
     
+    /**
+     * Cancel the current AI response (for interruption)
+     */
+    fun cancelCurrentResponse() {
+        try {
+            val cancelEvent = JSONObject().apply {
+                put("type", "response.cancel")
+            }
+            val success = webSocket?.send(cancelEvent.toString()) ?: false
+            Log.d("ApiClient", "📛 Sent response.cancel - success: $success")
+        } catch (e: Exception) {
+            Log.e("ApiClient", "Error canceling response", e)
+        }
+    }
+    
+    
     fun disconnectRealtime() {
         Log.d("ApiClient", "🔌 Disconnecting WebSocket...")
         try {

@@ -132,6 +132,14 @@ class AgoraAudioManager(context: Context) {
             rtcEngine?.disableVideo()
             rtcEngine?.enableAudioVolumeIndication(200, 3, true) // Report volume every 200ms
             
+            // CRITICAL: Enable Echo Cancellation to prevent AI voice from being picked up by mic
+            // This allows us to detect real human speech vs device speaker output
+            rtcEngine?.setParameters("{\"che.audio.enable.aec\":true}")  // Acoustic Echo Cancellation
+            rtcEngine?.setParameters("{\"che.audio.enable.ns\":true}")   // Noise Suppression
+            rtcEngine?.setParameters("{\"che.audio.enable.agc\":true}")  // Automatic Gain Control
+            
+            Log.d("AgoraAudioManager", "✅ Echo Cancellation ENABLED - AI voice will not trigger interruption")
+            
             // Set Audio Profile for better quality
             rtcEngine?.setAudioProfile(Constants.AUDIO_PROFILE_DEFAULT, Constants.AUDIO_SCENARIO_DEFAULT)
             rtcEngine?.setClientRole(Constants.CLIENT_ROLE_BROADCASTER) // Critical: Must be Broadcaster to send audio
@@ -147,6 +155,7 @@ class AgoraAudioManager(context: Context) {
             rtcEngine?.setPlaybackAudioFrameParameters(16000, 1, Constants.RAW_AUDIO_FRAME_OP_MODE_READ_ONLY, 320)
             rtcEngine?.setMixedAudioFrameParameters(16000, 1, 320)
             rtcEngine?.setEarMonitoringAudioFrameParameters(16000, 1, Constants.RAW_AUDIO_FRAME_OP_MODE_READ_ONLY, 320)
+            
             
         } catch (e: Exception) {
             Log.e("AgoraAudioManager", "Error initializing Agora", e)
