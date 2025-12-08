@@ -118,11 +118,17 @@ class ConversationViewModel(
             }
             
             override fun onResponseComplete() {
-                Log.d("ConversationViewModel", "✅ AI response complete - returning to Listening immediately")
-                isAiSpeaking = false
-                // Return to Listening screen immediately
-                _callState.value = CallState.Listening()
-                currentAiText = "" // Reset for next response
+                Log.d("ConversationViewModel", "✅ AI response complete - Waiting for playback to finish...")
+                
+                // CRITICAL: Wait for AudioTrack to drain buffer before opening mic
+                // Prevents capturing the tail end of AI speech (Echo Loop)
+                viewModelScope.launch {
+                    kotlinx.coroutines.delay(800) // 800ms safety buffer
+                    isAiSpeaking = false
+                    _callState.value = CallState.Listening()
+                    currentAiText = "" 
+                    Log.d("ConversationViewModel", "🎤 Mic re-opened after buffer drain")
+                }
             }
             
             override fun onError(msg: String) {
