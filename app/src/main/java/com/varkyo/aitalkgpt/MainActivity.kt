@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.varkyo.aitalkgpt.ui.theme.AiTalkGptTheme
+import com.varkyo.aitalkgpt.viewmodel.ConversationViewModel
 
 class MainActivity : ComponentActivity() {
 
