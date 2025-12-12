@@ -168,17 +168,19 @@ fun CallScreen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
-                    text = "Connecting...",
+                    text = "Calling AI...", // Changed to match "Ringing" feel
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Medium,
                     color = Color.White
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
-
-                CircularProgressIndicator(
+                
+                // Ringing dots animation or similar could be added here
+                LinearProgressIndicator(
                     color = Color.White,
-                    modifier = Modifier.size(40.dp)
+                    trackColor = Color.White.copy(alpha = 0.3f),
+                    modifier = Modifier.width(150.dp)
                 )
 
                 Spacer(modifier = Modifier.height(40.dp))
@@ -228,25 +230,17 @@ fun ListeningScreen(
     state: CallState.Listening,
     onEndCall: () -> Unit
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val micScale by infiniteTransition.animateFloat(
-        initialValue = if (state.isUserSpeaking) 1f else 0.9f,
-        targetValue = if (state.isUserSpeaking) 1.2f else 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "micScale"
-    )
-
+    // Simulated Visualizer
+    val infiniteTransition = rememberInfiniteTransition(label = "visualizer")
+    
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF4CAF50),
-                        Color(0xFF388E3C)
+                        Color(0xFF43A047),
+                        Color(0xFF2E7D32)
                     )
                 )
             ),
@@ -259,7 +253,7 @@ fun ListeningScreen(
         ) {
             // Listening text
             Text(
-                text = "Listening...",
+                text = "I'm Listening...",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
@@ -267,94 +261,56 @@ fun ListeningScreen(
 
             Spacer(modifier = Modifier.height(40.dp))
 
-            // Animated microphone icon
-            Box(
-                modifier = Modifier
-                    .size(150.dp)
-                    .scale(micScale)
-                    .background(
-                        color = Color.White.copy(alpha = 0.3f),
-                        shape = CircleShape
-                    ),
-                contentAlignment = Alignment.Center
+            // Dynamic Bounce Visualizer
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.height(120.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Filled.AddCircle,
-                    contentDescription = "Microphone",
-                    modifier = Modifier.size(80.dp),
-                    tint = Color.White
-                )
+                 repeat(7) { index ->
+                     val duration = 500 + index * 100
+                     val heightScale by infiniteTransition.animateFloat(
+                        initialValue = 0.3f,
+                        targetValue = 1.0f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(duration, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "bar$index"
+                    )
+                    
+                    Box(
+                        modifier = Modifier
+                            .width(16.dp)
+                            .fillMaxHeight(heightScale) // Always animate
+                            .background(Color.White, CircleShape)
+                    )
+                 }
             }
-
+            
             Spacer(modifier = Modifier.height(24.dp))
 
-            // User transcript (if available)
-            if (state.userTranscript.isNotEmpty()) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color.White.copy(alpha = 0.2f)
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp)
-                    ) {
-                        Text(
-                            text = "You said:",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color.White.copy(alpha = 0.8f)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = state.userTranscript,
-                            fontSize = 18.sp,
-                            color = Color.White,
-                            lineHeight = 24.sp
-                        )
-                    }
-                }
-            } else {
-                Text(
-                    text = "Speak naturally...",
-                    fontSize = 18.sp,
-                    color = Color.White.copy(alpha = 0.8f)
-                )
-            }
+            Text(
+                text = if (state.isUserSpeaking) "Detecting Speech..." else "Speak Now",
+                fontSize = 18.sp,
+                color = Color.White.copy(alpha = 0.8f)
+            )
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // End Call button
             Button(
-                onClick = {
-                    android.util.Log.d("MainActivity", "🔴 End Call button clicked (Listening)")
-                    onEndCall()
-                },
+                onClick = onEndCall,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp)
                     .padding(horizontal = 32.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFF44336)
-                ),
-                shape = RoundedCornerShape(32.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                 shape = RoundedCornerShape(32.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Clear,
-                    contentDescription = "End Call",
-                    modifier = Modifier.size(28.dp)
-                )
+                Icon(Icons.Filled.Clear, "End", modifier = Modifier.size(28.dp))
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "End Call",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("End Call", fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
-
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
@@ -366,25 +322,14 @@ fun SpeakingScreen(
     state: CallState.Speaking,
     onEndCall: () -> Unit
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "wave")
-    val waveScale by infiniteTransition.animateFloat(
-        initialValue = 0.8f,
-        targetValue = 1.2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "waveScale"
-    )
-
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF2196F3),
-                        Color(0xFF1976D2)
+                        Color(0xFF1976D2),
+                        Color(0xFF0D47A1)
                     )
                 )
             ),
@@ -392,10 +337,11 @@ fun SpeakingScreen(
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+            // verticalArrangement = Arrangement.spacedBy(24.dp), // Removed to allow weight
             modifier = Modifier.padding(32.dp)
         ) {
-            // Speaking text
+            Spacer(modifier = Modifier.height(32.dp))
+            
             Text(
                 text = "AI is speaking...",
                 fontSize = 28.sp,
@@ -403,51 +349,33 @@ fun SpeakingScreen(
                 color = Color.White
             )
 
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
-            // Animated sound waves
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // AI Avatar / Animation
+            Box(
+                modifier = Modifier
+                    .size(120.dp)
+                    .background(Color.White.copy(alpha=0.2f), CircleShape)
+                    .padding(20.dp)
             ) {
-                repeat(5) { index ->
-                    val delay = index * 100
-                    val animatedScale by infiniteTransition.animateFloat(
-                        initialValue = 0.5f,
-                        targetValue = 1.5f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(
-                                durationMillis = 800,
-                                delayMillis = delay,
-                                easing = FastOutSlowInEasing
-                            ),
-                            repeatMode = RepeatMode.Reverse
-                        ),
-                        label = "wave$index"
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .width(12.dp)
-                            .height(60.dp * animatedScale)
-                            .background(
-                                color = Color.White,
-                                shape = RoundedCornerShape(6.dp)
-                            )
-                    )
-                }
+                Icon(
+                     imageVector = Icons.Filled.ExitToApp,
+                     contentDescription = null,
+                     modifier = Modifier.fillMaxSize(),
+                     tint = Color.White
+                )
             }
 
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
-            // AI text display (streaming)
+            // AI Text Streaming
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .heightIn(min = 150.dp, max = 300.dp),
+                    .weight(1f) // Take available space
+                    .padding(horizontal = 8.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color.White.copy(alpha = 0.15f)
+                    containerColor = Color.Black.copy(alpha = 0.3f)
                 ),
                 shape = RoundedCornerShape(20.dp)
             ) {
@@ -455,55 +383,49 @@ fun SpeakingScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(24.dp),
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.TopStart
                 ) {
                     if (state.aiText.isNotEmpty()) {
                         Text(
                             text = state.aiText,
-                            fontSize = 20.sp,
+                            fontSize = 22.sp,
                             color = Color.White,
-                            lineHeight = 28.sp,
-                            textAlign = TextAlign.Center
+                            lineHeight = 32.sp,
+                            textAlign = TextAlign.Start
                         )
                     } else {
-                        CircularProgressIndicator(
-                            color = Color.White,
-                            modifier = Modifier.size(40.dp)
+                         Text(
+                            text = "Thinking...",
+                            fontSize = 18.sp,
+                            color = Color.White.copy(alpha=0.7f)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            Text(
+                text = "(Speak to interrupt)",
+                fontSize = 16.sp,
+                color = Color.White.copy(alpha = 0.6f)
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // End Call button
             Button(
-                onClick = {
-                    android.util.Log.d("MainActivity", "🔴 End Call button clicked (Speaking)")
-                    onEndCall()
-                },
+                onClick = onEndCall,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp)
                     .padding(horizontal = 32.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFF44336)
-                ),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
                 shape = RoundedCornerShape(32.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Clear,
-                    contentDescription = "End Call",
-                    modifier = Modifier.size(28.dp)
-                )
+                Icon(Icons.Filled.Clear, "End", modifier = Modifier.size(28.dp))
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "End Call",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("End Call", fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
-
             Spacer(modifier = Modifier.height(32.dp))
         }
     }

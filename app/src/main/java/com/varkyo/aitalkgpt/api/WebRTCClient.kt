@@ -40,9 +40,7 @@ class WebRTCClient(
     private val eglBase = EglBase.create()
 
     // Callbacks
-    var onRemoteAudioTrack: ((AudioTrack) -> Unit)? = null
-    var onDataChannelMessage: ((String) -> Unit)? = null
-    var onConnectionStateChange: ((PeerConnection.PeerConnectionState) -> Unit)? = null
+
 
     private val scope = CoroutineScope(Dispatchers.IO)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
@@ -211,6 +209,14 @@ class WebRTCClient(
         })
     }
 
+    // Callbacks
+    var onRemoteAudioTrack: ((AudioTrack) -> Unit)? = null
+    var onDataChannelMessage: ((String) -> Unit)? = null
+    var onConnectionStateChange: ((PeerConnection.PeerConnectionState) -> Unit)? = null
+    var onUserSpeechStart: (() -> Unit)? = null
+    var onUserSpeechStop: (() -> Unit)? = null
+    var onAiSpeechEnd: (() -> Unit)? = null
+
     private fun setupDataChannel(dc: DataChannel?) {
         dc?.registerObserver(object : DataChannel.Observer {
             override fun onBufferedAmountChange(p0: Long) {}
@@ -220,8 +226,36 @@ class WebRTCClient(
                 val bytes = ByteArray(data?.remaining() ?: 0)
                 data?.get(bytes)
                 val text = String(bytes)
-                Log.d(TAG, "DC Message: $text")
-                onDataChannelMessage?.invoke(text)
+                
+                try {
+                    val json = JSONObject(text)
+                    val type = json.optString("type")
+                    
+                    if (type == "input_audio_buffer.speech_started") {
+                        Log.d(TAG, "🛑 User started speaking (Server VAD)")
+                        scope.launch(Dispatchers.Main) {
+                             onUserSpeechStart?.invoke()
+                        }
+                    } else if (type == "input_audio_buffer.speech_stopped") {
+                        Log.d(TAG, "User stopped speaking")
+                         scope.launch(Dispatchers.Main) {
+                             onUserSpeechStop?.invoke()
+                        }
+                    } else if (type == "response.done") {
+                        Log.d(TAG, "✅ AI finished speaking (response.done)")
+                        scope.launch(Dispatchers.Main) {
+                            onAiSpeechEnd?.invoke()
+                        }
+                    }
+                    
+                    // Forward full message just in case
+                    scope.launch(Dispatchers.Main) {
+                        onDataChannelMessage?.invoke(text)
+                    }
+                    
+                } catch (e: Exception) {
+                    Log.e(TAG, "JSON Parse Error on DC", e)
+                }
             }
         })
     }
