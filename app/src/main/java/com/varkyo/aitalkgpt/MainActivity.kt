@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.varkyo.aitalkgpt.ui.TopicSelectionScreen
 import com.varkyo.aitalkgpt.ui.theme.AiTalkGptTheme
 import com.varkyo.aitalkgpt.viewmodel.ConversationViewModel
 
@@ -62,7 +63,9 @@ fun AppContent() {
 
     // Navigate between screens based on CallState
     when (val state = callState) {
-        is CallState.Idle -> CallScreen(onStartCall = { viewModel.startCall() })
+        is CallState.Idle -> TopicSelectionScreen(
+            onTopicSelected = { topic -> viewModel.startCall(topic) }
+        )
         is CallState.Connecting -> CallScreen(isConnecting = true, onCancel = { viewModel.endCall() })
         is CallState.Listening -> ListeningScreen(
             state = state,

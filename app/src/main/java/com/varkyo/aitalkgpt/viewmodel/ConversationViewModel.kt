@@ -1,5 +1,6 @@
 package com.varkyo.aitalkgpt.viewmodel
 
+import com.varkyo.aitalkgpt.ui.Topic
 import android.content.Context
 import android.util.Log
 import androidx.annotation.OptIn
@@ -44,11 +45,14 @@ class ConversationViewModel(
     }
     
     // Lazy setup to ensure we attach callbacks to the *current* client instance
+    private var isCallInitialized = false
+
     private fun ensureClientAndCallbacks() {
         if (webRTCClient == null) {
             webRTCClient = WebRTCClient(context, serverBaseUrl)
         }
         
+        // ... (data channel and speech callbacks same as before) ...
         webRTCClient?.onDataChannelMessage = { message ->
             handleDataChannelMessage(message)
         }
@@ -92,11 +96,35 @@ class ConversationViewModel(
             }
         }
         
+        webRTCClient?.onDataChannelOpen = {
+            Log.d("ConversationViewModel", "Data Channel OPEN! Sending Greeting...")
+             if (!isCallInitialized) {
+                 isCallInitialized = true
+                 stopRinging()
+                 
+                 // Trigger AI Greeting
+                 val topicTitle = selectedTopic?.title ?: "English Practice"
+                 val greetingInstruction = """
+                     {
+                         "type": "response.create",
+                         "response": {
+                             "modalities": ["text", "audio"],
+                             "instructions": "Greet the user immediately for the topic '$topicTitle'. Say 'Hello! Welcome to $topicTitle session.' and ask a starting question."
+                         }
+                     }
+                 """.trimIndent()
+                 
+                 viewModelScope.launch {
+                     webRTCClient?.sendMessage(greetingInstruction)
+                 }
+             }
+        }
+        
         webRTCClient?.onConnectionStateChange = { state ->
             Log.d("ConversationViewModel", "WebRTC State: $state")
             if (state == org.webrtc.PeerConnection.PeerConnectionState.CONNECTED) {
+                 // Stop ringing but wait for DC Open to init session
                  stopRinging()
-                 _callState.value = CallState.Listening()
             } else if (state == org.webrtc.PeerConnection.PeerConnectionState.FAILED) {
                  stopRinging()
                  _callState.value = CallState.Error("Connection Failed")
@@ -125,19 +153,29 @@ class ConversationViewModel(
         }
     }
 
-    fun startCall() {
+    private var selectedTopic: Topic? = null
+
+    fun startCall(topic: Topic? = null) {
         val currentState = _callState.value
         if (currentState !is CallState.Idle && currentState !is CallState.Error) return
 
+        val topicToUse = topic ?: selectedTopic
+        if (topicToUse == null) {
+            Log.e("ConversationViewModel", "Cannot start call: No topic selected")
+            return
+        }
+        
+        selectedTopic = topicToUse
         _callState.value = CallState.Connecting
         _callDurationSeconds.value = 0L
         currentAiText = ""
+        isCallInitialized = false
         
         ensureClientAndCallbacks()
         
-        Log.d("ConversationViewModel", "🚀 Starting WebRTC Call...")
+        Log.d("ConversationViewModel", "🚀 Starting WebRTC Call for topic: ${topicToUse.title}")
         startRinging()
-        webRTCClient?.startSession()
+        webRTCClient?.startSession(topicToUse.id)
     }
     
     private fun startRinging() {

@@ -62,7 +62,7 @@ class WebRTCClient(
             .createPeerConnectionFactory()
     }
 
-     fun startSession() {
+     fun startSession(topicId: String) {
         // Set Audio Mode to COMMUNICATION for WebRTC AEC/NS to work best
         originalAudioMode = audioManager.mode
         audioManager.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
@@ -70,8 +70,8 @@ class WebRTCClient(
         
         scope.launch {
             try {
-                Log.d(TAG, "Fetching ephemeral token...")
-                val tokenData = fetchToken()
+                Log.d(TAG, "Fetching ephemeral token for topic: $topicId")
+                val tokenData = fetchToken(topicId)
                // val ephemeralKey = tokenData.getString("client_secret") { "client_secret" } // Pseudo-code manual extraction
                 
                 // Real implementation:
@@ -89,6 +89,7 @@ class WebRTCClient(
                 // Create Data Channel for control events
                 val dcInit = DataChannel.Init()
                 val dataChannel = peerConnection?.createDataChannel("oai-events", dcInit)
+                localDataChannel = dataChannel
                 setupDataChannel(dataChannel)
 
                 // Create Offer
@@ -112,9 +113,9 @@ class WebRTCClient(
         }
     }
 
-    private suspend fun fetchToken(): String = withContext(Dispatchers.IO) {
+    private suspend fun fetchToken(topicId: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url("$serverBaseUrl/session")
+            .url("$serverBaseUrl/session?topic=$topicId")
             .build()
         val response = httpClient.newCall(request).execute()
         if (!response.isSuccessful) throw Exception("Failed to get token: ${response.code}")
@@ -217,10 +218,19 @@ class WebRTCClient(
     var onUserSpeechStop: (() -> Unit)? = null
     var onAiSpeechEnd: (() -> Unit)? = null
 
+    var onDataChannelOpen: (() -> Unit)? = null
+
     private fun setupDataChannel(dc: DataChannel?) {
         dc?.registerObserver(object : DataChannel.Observer {
             override fun onBufferedAmountChange(p0: Long) {}
-            override fun onStateChange() { Log.d(TAG, "DataChannel State: ${dc.state()}") }
+            override fun onStateChange() { 
+                Log.d(TAG, "DataChannel State: ${dc.state()}")
+                if (dc.state() == DataChannel.State.OPEN) {
+                    scope.launch(Dispatchers.Main) {
+                        onDataChannelOpen?.invoke()
+                    }
+                }
+            }
             override fun onMessage(buffer: DataChannel.Buffer?) {
                 val data = buffer?.data
                 val bytes = ByteArray(data?.remaining() ?: 0)
@@ -258,6 +268,14 @@ class WebRTCClient(
                 }
             }
         })
+    }
+
+    private var localDataChannel: DataChannel? = null
+
+    fun sendMessage(message: String) {
+        val buffer = java.nio.ByteBuffer.wrap(message.toByteArray())
+        localDataChannel?.send(DataChannel.Buffer(buffer, false))
+        Log.d(TAG, "Sent Message: $message")
     }
 
     fun close() {
