@@ -103,14 +103,7 @@ fun CallScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF1E88E5),
-                        Color(0xFF1565C0)
-                    )
-                )
-            ),
+            .background(com.varkyo.aitalkgpt.ui.theme.AppBackground), // New BG
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -138,7 +131,7 @@ fun CallScreen(
                         modifier = Modifier
                             .size(200.dp * scale)
                             .background(
-                                color = Color.White.copy(alpha = 0.2f),
+                                color = com.varkyo.aitalkgpt.ui.theme.BrandRed.copy(alpha = 0.2f),
                                 shape = CircleShape
                             )
                     )
@@ -146,7 +139,7 @@ fun CallScreen(
                         modifier = Modifier
                             .size(150.dp)
                             .background(
-                                color = Color.White.copy(alpha = 0.3f),
+                                color = com.varkyo.aitalkgpt.ui.theme.BrandRed.copy(alpha = 0.3f),
                                 shape = CircleShape
                             )
                     )
@@ -154,7 +147,7 @@ fun CallScreen(
                         modifier = Modifier
                             .size(100.dp)
                             .background(
-                                color = Color.White,
+                                color = com.varkyo.aitalkgpt.ui.theme.BrandRed,
                                 shape = CircleShape
                             ),
                         contentAlignment = Alignment.Center
@@ -163,7 +156,7 @@ fun CallScreen(
                             imageVector = Icons.Filled.Phone,
                             contentDescription = "Calling",
                             modifier = Modifier.size(48.dp),
-                            tint = Color(0xFF1565C0)
+                            tint = Color.White
                         )
                     }
                 }
@@ -171,7 +164,7 @@ fun CallScreen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
-                    text = "Calling AI...", // Changed to match "Ringing" feel
+                    text = "Calling AI...", 
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Medium,
                     color = Color.White
@@ -179,9 +172,8 @@ fun CallScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                // Ringing dots animation or similar could be added here
                 LinearProgressIndicator(
-                    color = Color.White,
+                    color = com.varkyo.aitalkgpt.ui.theme.BrandRed,
                     trackColor = Color.White.copy(alpha = 0.3f),
                     modifier = Modifier.width(150.dp)
                 )
@@ -205,8 +197,8 @@ fun CallScreen(
                 FloatingActionButton(
                     onClick = onStartCall,
                     modifier = Modifier.size(120.dp),
-                    containerColor = Color.White,
-                    contentColor = Color(0xFF4CAF50)
+                    containerColor = com.varkyo.aitalkgpt.ui.theme.BrandRed,
+                    contentColor = Color.White
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Phone,
@@ -239,14 +231,7 @@ fun ListeningScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF43A047),
-                        Color(0xFF2E7D32)
-                    )
-                )
-            ),
+            .background(com.varkyo.aitalkgpt.ui.theme.AppBackground), // New BG
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -286,7 +271,7 @@ fun ListeningScreen(
                         modifier = Modifier
                             .width(16.dp)
                             .fillMaxHeight(heightScale) // Always animate
-                            .background(Color.White, CircleShape)
+                            .background(com.varkyo.aitalkgpt.ui.theme.BrandRed, CircleShape) // New Color
                     )
                  }
             }
@@ -307,12 +292,12 @@ fun ListeningScreen(
                     .fillMaxWidth()
                     .height(64.dp)
                     .padding(horizontal = 32.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                colors = ButtonDefaults.buttonColors(containerColor = com.varkyo.aitalkgpt.ui.theme.SurfaceDark), // Less aggressive for End Call
                  shape = RoundedCornerShape(32.dp)
             ) {
-                Icon(Icons.Filled.Clear, "End", modifier = Modifier.size(28.dp))
+                Icon(Icons.Filled.Clear, "End", modifier = Modifier.size(28.dp), tint = com.varkyo.aitalkgpt.ui.theme.BrandRed)
                 Spacer(modifier = Modifier.width(12.dp))
-                Text("End Call", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("End Call", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = com.varkyo.aitalkgpt.ui.theme.BrandRed)
             }
             Spacer(modifier = Modifier.height(32.dp))
         }
@@ -328,19 +313,12 @@ fun SpeakingScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF1976D2),
-                        Color(0xFF0D47A1)
-                    )
-                )
-            ),
+            .background(com.varkyo.aitalkgpt.ui.theme.AppBackground), // New BG
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            // verticalArrangement = Arrangement.spacedBy(24.dp), // Removed to allow weight
+            // verticalArrangement = Arrangement.spacedBy(24.dp), 
             modifier = Modifier.padding(32.dp)
         ) {
             Spacer(modifier = Modifier.height(32.dp))
@@ -358,14 +336,14 @@ fun SpeakingScreen(
             Box(
                 modifier = Modifier
                     .size(120.dp)
-                    .background(Color.White.copy(alpha=0.2f), CircleShape)
+                    .background(com.varkyo.aitalkgpt.ui.theme.BrandRed.copy(alpha=0.2f), CircleShape) // Red Glow
                     .padding(20.dp)
             ) {
                 Icon(
-                     imageVector = Icons.Filled.ExitToApp,
+                     imageVector = Icons.Filled.Face, // Changed to Face for AI
                      contentDescription = null,
                      modifier = Modifier.fillMaxSize(),
-                     tint = Color.White
+                     tint = com.varkyo.aitalkgpt.ui.theme.BrandRed
                 )
             }
 
@@ -378,7 +356,7 @@ fun SpeakingScreen(
                     .weight(1f) // Take available space
                     .padding(horizontal = 8.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color.Black.copy(alpha = 0.3f)
+                    containerColor = com.varkyo.aitalkgpt.ui.theme.SurfaceDark // Dark Surface
                 ),
                 shape = RoundedCornerShape(20.dp)
             ) {
@@ -422,12 +400,12 @@ fun SpeakingScreen(
                     .fillMaxWidth()
                     .height(64.dp)
                     .padding(horizontal = 32.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                colors = ButtonDefaults.buttonColors(containerColor = com.varkyo.aitalkgpt.ui.theme.SurfaceDark),
                 shape = RoundedCornerShape(32.dp)
             ) {
-                Icon(Icons.Filled.Clear, "End", modifier = Modifier.size(28.dp))
+                Icon(Icons.Filled.Clear, "End", modifier = Modifier.size(28.dp), tint = com.varkyo.aitalkgpt.ui.theme.BrandRed)
                 Spacer(modifier = Modifier.width(12.dp))
-                Text("End Call", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("End Call", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = com.varkyo.aitalkgpt.ui.theme.BrandRed)
             }
             Spacer(modifier = Modifier.height(32.dp))
         }
@@ -443,14 +421,7 @@ fun ErrorScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFFF44336),
-                        Color(0xFFD32F2F)
-                    )
-                )
-            ),
+            .background(com.varkyo.aitalkgpt.ui.theme.AppBackground),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -459,10 +430,10 @@ fun ErrorScreen(
             modifier = Modifier.padding(32.dp)
         ) {
             Icon(
-                imageVector = Icons.Filled.Clear,
+                imageVector = Icons.Filled.Warning, // Changed Icon
                 contentDescription = "Error",
                 modifier = Modifier.size(80.dp),
-                tint = Color.White
+                tint = com.varkyo.aitalkgpt.ui.theme.BrandRed
             )
 
             Text(
@@ -477,7 +448,7 @@ fun ErrorScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color.White.copy(alpha = 0.2f)
+                    containerColor = com.varkyo.aitalkgpt.ui.theme.SurfaceDark
                 ),
                 shape = RoundedCornerShape(16.dp)
             ) {
@@ -499,7 +470,7 @@ fun ErrorScreen(
                     .height(64.dp)
                     .padding(horizontal = 32.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White
+                    containerColor = com.varkyo.aitalkgpt.ui.theme.BrandRed
                 ),
                 shape = RoundedCornerShape(32.dp)
             ) {
@@ -507,14 +478,14 @@ fun ErrorScreen(
                     imageVector = Icons.Filled.Refresh,
                     contentDescription = "Retry",
                     modifier = Modifier.size(28.dp),
-                    tint = Color(0xFFF44336)
+                    tint = Color.White
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = "Retry",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFF44336)
+                    color = Color.White
                 )
             }
         }

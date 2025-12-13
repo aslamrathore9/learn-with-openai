@@ -1,6 +1,12 @@
 package com.varkyo.aitalkgpt.ui
 
+import android.os.Build
+import android.view.View
+import androidx.annotation.RequiresApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -14,12 +20,30 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.LottieConstants
+import com.airbnb.lottie.compose.rememberLottieComposition
+import com.varkyo.aitalkgpt.R
+import com.varkyo.aitalkgpt.ui.theme.AppBackground
+import com.varkyo.aitalkgpt.ui.theme.BrandRed
+import com.varkyo.aitalkgpt.ui.theme.SurfaceDark
+import com.varkyo.aitalkgpt.ui.theme.SurfaceDark2
+
+val RobotoLight = FontFamily(Font(R.font.roboto_light))
 
 data class Topic(
     val id: String,
@@ -30,9 +54,11 @@ data class Topic(
     val category: String, // "General" or "Interview"
     val difficulty: String = "Easy",
     val lastChatDate: String? = null,
-    val practiceCount: Int = 0
+    val practiceCount: Int = 0,
+    val lottieRes: Int? = null // Optional Lottie resource
 )
 
+@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TopicSelectionScreen(
@@ -40,31 +66,31 @@ fun TopicSelectionScreen(
 ) {
     var selectedCategory by remember { mutableStateOf("General") }
     var showBottomSheet by remember { mutableStateOf<Topic?>(null) }
-    
+
     val topics = remember { getTopics() }
     val filteredTopics = topics.filter { it.category == selectedCategory }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF121212)) // Dark background
+            .background(AppBackground) // New Background
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Top Bar
             TopBar()
-            
+
             // Tabs
             CategoryTabs(
                 selectedCategory = selectedCategory,
                 onCategorySelected = { selectedCategory = it }
             )
-            
+
             // Grid
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.weight(1f)
             ) {
                 items(filteredTopics) { topic ->
@@ -75,13 +101,13 @@ fun TopicSelectionScreen(
                 }
             }
         }
-        
+
         // Bottom Sheet
         if (showBottomSheet != null) {
             val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
             ModalBottomSheet(
                 onDismissRequest = { showBottomSheet = null },
-                containerColor = Color(0xFF1E1E1E),
+                containerColor = SurfaceDark, // New Surface
                 sheetState = sheetState
             ) {
                 CallConfirmationSheet(
@@ -98,52 +124,160 @@ fun TopicSelectionScreen(
 
 @Composable
 fun TopBar() {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(16.dp)
+            .statusBarsPadding()
     ) {
-        // Avatar
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .background(Color(0xFF6200EA), CircleShape),
-            contentAlignment = Alignment.Center
+        // Header Row: Avatar, Pro, Rank, Streak
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("A", color = Color.White, fontWeight = FontWeight.Bold)
+            // Avatar
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(Color(0xFF6C63FF), CircleShape) // Placeholder Color
+                    .border(2.dp, Color(0xFF3B3E58), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                // Placeholder Image/Icon
+                Image(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = "Avatar",
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                )
+                // Small menu icon overlay? (As per reference image)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(x = 4.dp, y = 4.dp)
+                        .size(16.dp)
+                        .background(SurfaceDark, CircleShape)
+                        .border(1.dp, Color.White, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Menu,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(10.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Get Pro Button
+            Button(
+                onClick = { /* TODO */ },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2D3A)),
+                shape = RoundedCornerShape(50),
+                border = BorderStroke(1.dp, Color(0xFFFFC107)),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.height(36.dp)
+            ) {
+                Icon(
+                    Icons.Default.Star,
+                    contentDescription = null,
+                    tint = Color(0xFFFFC107),
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    "Get Pro",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Rank Badge
+            Box(
+                modifier = Modifier
+                    .background(Color(0xFF2A2D3A), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Face, // Leaderboard placeholder
+                    contentDescription = null,
+                    tint = Color(0xFF4CAF50), // Greenish for rank
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Streak Badge
+            Box(
+                modifier = Modifier
+                    .background(Color(0xFF2A2D3A), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Face,
+                        contentDescription = null,
+                        tint = Color(0xFFFF5722),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        "0",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        fontFamily = RobotoLight
+                    )
+                }
+            }
         }
-        
-        Spacer(modifier = Modifier.width(16.dp))
-        
-        // Title
-        Column {
-            Text(
-                "ARYA AI",
-                color = Color.White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Title Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Bot Icon
+                Image(
+                    painter = painterResource(id = R.drawable.lyra_speaking),
+                    contentDescription = "Bot Avatar",
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    "Lyra AI",
+                    color = Color.White,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = RobotoLight
+                )
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
             Text(
                 "History",
                 color = Color.Gray,
-                fontSize = 12.sp,
-                modifier = Modifier.clickable { /* TODO */ }
+                fontSize = 14.sp,
+                textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+                modifier = Modifier.clickable { /* TODO */ },
+                fontFamily = RobotoLight
             )
-        }
-        
-        Spacer(modifier = Modifier.weight(1f))
-        
-        // Pro Button
-        Button(
-            onClick = { /* TODO */ },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFC107)),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-             modifier = Modifier.height(36.dp)
-        ) {
-            Icon(Icons.Default.Star, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(4.dp))
-            Text("Get Pro", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -180,99 +314,224 @@ fun TabItem(
 ) {
     Column(
         modifier = modifier
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
+            .background(if (selected) BrandRed.copy(alpha = 0.1f) else Color.Transparent)
+            .clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = text,
-            color = if (selected) Color(0xFF7C4DFF) else Color.Gray,
-            fontSize = 16.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-        )
+        Box(
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .padding(vertical = 12.dp)
+        ) {
+            Text(
+                text = text,
+                color = if (selected) BrandRed else Color.Gray,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = RobotoLight
+            )
+        }
+
         if (selected) {
-            Spacer(modifier = Modifier.height(4.dp))
             Box(
                 modifier = Modifier
-                    .width(40.dp)
-                    .height(2.dp)
-                    .background(Color(0xFF7C4DFF))
+                    .fillMaxWidth()
+                    .height(2.5.dp)
+                    .background(BrandRed, RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp) // Height less than selected tab (4.dp)
+                    .background(Color.Gray.copy(alpha = 0.3f))
             )
         }
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun TopicCard(
     topic: Topic,
     onClick: () -> Unit
 ) {
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+    // Outer Box for Floating Elements (Crown)
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(0.85f)
+            .padding(top = 12.dp) // Space for the floating crown
+            .clickable(onClick = onClick)
     ) {
-        Column(
+        // Main Card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+            shape = RoundedCornerShape(15.dp),
+            border = BorderStroke(1.dp, Color(0xFF3D4252)), // Subtle border
             modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+                .fillMaxWidth()
+                .aspectRatio(1f) // Square aspect ratio
         ) {
-            // Header Tags
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                 Text(
-                     text = topic.difficulty,
-                     color = Color.Gray,
-                     fontSize = 10.sp
-                 )
-                 if (topic.practiceCount > 0) {
-                     Text(
-                         text = "Practiced ${topic.practiceCount} times",
-                         color = Color(0xFF4CAF50),
-                         fontSize = 10.sp
-                     )
-                 }
-            }
-            
-            // Icon
-            Icon(
-                imageVector = topic.icon,
-                contentDescription = null,
-                tint = topic.color,
-                modifier = Modifier.size(48.dp)
-            )
-            
-            // Title
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = topic.title,
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    maxLines = 2
-                )
-                if (topic.lastChatDate != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                         text = "Last: ${topic.lastChatDate}",
-                         color = Color.Gray,
-                         fontSize = 10.sp
-                    )
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = 12.dp, end = 12.dp, bottom = 8.dp, top = 5.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Top Row: Battery/Level only
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Start, // Changed to Start since Practice count is moved
+                    ) {
+                        // Battery/Level
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Top,
+                            modifier = Modifier.weight(3f)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.lyra_level),
+                                contentDescription = null,
+                                tint = Color.Unspecified,
+                                modifier = Modifier.size(width = 29.dp, height = 10.dp)
+                            )
+
+                            Text(
+                                text = topic.difficulty,
+                                color = Color.Gray,
+                                fontSize = 7.sp,
+                                fontFamily = RobotoLight,
+                                modifier = Modifier
+                                    .wrapContentHeight()
+                                    .offset(y = (-2).dp), //  removes tiny visual gap
+                                style = TextStyle(
+                                    platformStyle = PlatformTextStyle(
+                                        includeFontPadding = false
+                                    ),
+                                    lineHeight = 10.sp
+                                )
+                            )
+                        }
+
+                        Box(modifier = Modifier.weight(7f))
+
+                    }
+
+                    // Center Icon / Illustration / Lottie
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (topic.lottieRes != null) {
+                            val composition by rememberLottieComposition(
+                                LottieCompositionSpec.RawRes(
+                                    topic.lottieRes
+                                )
+                            )
+                            if (composition != null) {
+                                LottieAnimation(
+                                    composition = composition,
+                                    iterations = LottieConstants.IterateForever,
+                                    modifier = Modifier.size(80.dp)
+                                )
+                            } else {
+                                // Loading or Error (Preview) -> Fallback to Icon
+                                Icon(
+                                    imageVector = topic.icon,
+                                    contentDescription = null,
+                                    tint = Color.Unspecified,
+                                    modifier = Modifier.size(64.dp)
+                                )
+                            }
+                        } else {
+                            // Fallback to Icon
+                            Icon(
+                                imageVector = topic.icon,
+                                contentDescription = null,
+                                tint = Color.Unspecified,
+                                modifier = Modifier.size(64.dp)
+                            )
+                        }
+                    }
+
+                    // Bottom: Title & Last Chat
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = topic.title,
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            lineHeight = 18.sp,
+                            maxLines = 2,
+                            fontFamily = RobotoLight
+                        )
+
+
+                        Text(
+                            text = "Last chat: ${topic.lastChatDate ?: "Never"}",
+                            color = Color.Gray,
+                            fontSize = 10.sp,
+                            fontFamily = RobotoLight
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                }
+
+                // Practice Count Badge (Top Right)
+                if (topic.practiceCount >= 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .background(
+                                color = Color(0xFF4CAF50).copy(alpha = 0.1f), // Light transparent green
+                                shape = RoundedCornerShape(bottomStart = 12.dp)
+                            )
+                            .padding(horizontal = 12.dp)
+                    ) {
+                        Text(
+                            text = "Practiced ${topic.practiceCount} times",
+                            color = Color(0xFF4CAF50), // Green
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = RobotoLight
+                        )
+                    }
                 }
             }
+        }
+
+        // Floating Crown Icon
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = (-12).dp) // Move up half its size
+                .size(24.dp)
+                .background(SurfaceDark2, CircleShape)
+                .border(1.dp, Color.Gray, CircleShape)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.pro_crown), // Crown-like
+                contentDescription = null,
+                tint = Color(0xFFD4AF37), // Gold
+                modifier = Modifier
+                    .size(14.dp)
+                    .align(Alignment.Center)
+            )
         }
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun CallConfirmationSheet(
     topic: Topic,
@@ -288,33 +547,41 @@ fun CallConfirmationSheet(
             text = "Ready to practice?",
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
-            color = Color.White
+            color = Color.White,
+            fontFamily = RobotoLight
         )
-        
+
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         TopicCard(topic = topic, onClick = {}) // Preview selected topic
-        
+
         Spacer(modifier = Modifier.height(24.dp))
-        
+
         Button(
             onClick = onStartCall,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+            colors = ButtonDefaults.buttonColors(containerColor = BrandRed), // New Accent
             shape = RoundedCornerShape(28.dp)
         ) {
             Icon(Icons.Default.Phone, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Start Call", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "Start Call",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = RobotoLight
+            )
         }
-        
+
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
 fun getTopics(): List<Topic> {
+    //val lyra_talk_about_workplace = R.raw.lyra_talk_about_workplace
+    // val lyra_family_relationship = R.raw.lyra_family_relationship
     return listOf(
         Topic(
             id = "talk_about_anything",
@@ -323,7 +590,8 @@ fun getTopics(): List<Topic> {
             color = Color(0xFFE91E63),
             category = "General",
             practiceCount = 9,
-            lastChatDate = "08 Dec 2025"
+            lastChatDate = "08 Dec 2025",
+            lottieRes = R.raw.lyra_talk_about_anything
         ),
         Topic(
             id = "daily_routine",
@@ -332,16 +600,8 @@ fun getTopics(): List<Topic> {
             color = Color(0xFF2196F3),
             category = "General",
             practiceCount = 2,
-            lastChatDate = "09 Dec 2025"
-        ),
-         Topic(
-            id = "improve_vocabulary",
-            title = "Let's Improve vocabulary",
-            icon = Icons.Default.Edit,
-            color = Color(0xFFFF9800),
-            category = "General",
-            practiceCount = 1,
-            lastChatDate = "29 Nov 2025"
+            lastChatDate = "09 Dec 2025",
+            lottieRes = R.raw.lyra_daily_routine
         ),
         Topic(
             id = "childhood_memory",
@@ -349,7 +609,57 @@ fun getTopics(): List<Topic> {
             icon = Icons.Default.Person,
             color = Color(0xFF9C27B0),
             category = "General",
-            practiceCount = 0
+            practiceCount = 0,
+            lottieRes = R.raw.lyra_childhood_memory
+        ),
+        Topic(
+            id = "seasons_weather",
+            title = "Seasons and Weather",
+            icon = Icons.Default.Edit,
+            color = Color(0xFFFF9800),
+            category = "General",
+            practiceCount = 1,
+            lastChatDate = "29 Nov 2025",
+            lottieRes = R.raw.lyra_weather
+        ),
+        Topic(
+            id = "family_relationship",
+            title = "Family and Relationship",
+            icon = Icons.Default.Person,
+            color = Color(0xFF9C27B0),
+            category = "General",
+            practiceCount = 0,
+            lottieRes = R.raw.lyra_family_relationship
+        ),
+
+        Topic(
+            id = "hobbies_interests",
+            title = "Hobbies and Interests",
+            icon = Icons.Default.Edit,
+            color = Color(0xFFFF9800),
+            category = "General",
+            practiceCount = 1,
+            lastChatDate = "29 Nov 2025",
+            lottieRes = R.raw.lyrahobbies_interest
+        ),
+        Topic(
+            id = "talk_about_your_workplace",
+            title = "Talk about your workplace",
+            icon = Icons.Default.Person,
+            color = Color(0xFF9C27B0),
+            category = "General",
+            practiceCount = 0,
+            lottieRes = R.raw.lyra_workplace
+        ),
+        Topic(
+            id = "improve_vocabulary",
+            title = "Let's Improve vocabulary",
+            icon = Icons.Default.Edit,
+            color = Color(0xFFFF9800),
+            category = "General",
+            practiceCount = 1,
+            lastChatDate = "29 Nov 2025",
+            lottieRes = R.raw.lyra_vocabulary
         ),
         // Interviews
         Topic(
@@ -358,15 +668,17 @@ fun getTopics(): List<Topic> {
             icon = Icons.Default.AccountBox,
             color = Color(0xFF00BCD4),
             category = "Interview",
-            difficulty = "Medium"
+            difficulty = "Medium",
+            lottieRes = R.raw.lyra_childhood_memory
         ),
-         Topic(
+        Topic(
             id = "career_plans",
             title = "Apne career plans share kare",
             icon = Icons.Default.Build,
             color = Color(0xFF673AB7),
             category = "Interview",
-            difficulty = "Medium"
+            difficulty = "Medium",
+            lottieRes = R.raw.lyra_childhood_memory
         ),
         Topic(
             id = "govt_interview",
@@ -374,7 +686,8 @@ fun getTopics(): List<Topic> {
             icon = Icons.Default.AccountCircle,
             color = Color(0xFF795548),
             category = "Interview",
-            difficulty = "Hard"
+            difficulty = "Hard",
+            lottieRes = R.raw.lyra_childhood_memory
         ),
         Topic(
             id = "job_interview",
@@ -382,7 +695,17 @@ fun getTopics(): List<Topic> {
             icon = Icons.Default.Email,
             color = Color(0xFF607D8B),
             category = "Interview",
-            difficulty = "Medium"
+            difficulty = "Medium",
+            lottieRes = R.raw.lyra_childhood_memory
         )
     )
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Preview(showBackground = true)
+@Composable
+fun TopicSelectionScreenPreview() {
+    MaterialTheme {
+        TopicSelectionScreen(onTopicSelected = {})
+    }
 }

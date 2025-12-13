@@ -76,4 +76,5 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.media3.exoplayer)
     implementation("com.github.webrtc-sdk:android:104.5112.09")
+    implementation(libs.lottie.compose)
 }
