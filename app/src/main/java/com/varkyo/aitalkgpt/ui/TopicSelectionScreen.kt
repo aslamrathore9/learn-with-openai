@@ -37,6 +37,7 @@ import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.rememberLottieComposition
+import kotlinx.coroutines.launch
 import com.varkyo.aitalkgpt.R
 import com.varkyo.aitalkgpt.ui.theme.AppBackground
 import com.varkyo.aitalkgpt.ui.theme.BrandRed
@@ -59,16 +60,17 @@ data class Topic(
 )
 
 @RequiresApi(Build.VERSION_CODES.O)
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun TopicSelectionScreen(
     onTopicSelected: (Topic) -> Unit
 ) {
-    var selectedCategory by remember { mutableStateOf("General") }
+    val coroutineScope = rememberCoroutineScope()
+    val categories = remember { listOf("General", "Interview") }
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { categories.size })
     var showBottomSheet by remember { mutableStateOf<Topic?>(null) }
 
     val topics = remember { getTopics() }
-    val filteredTopics = topics.filter { it.category == selectedCategory }
 
     Box(
         modifier = Modifier
@@ -81,23 +83,43 @@ fun TopicSelectionScreen(
 
             // Tabs
             CategoryTabs(
-                selectedCategory = selectedCategory,
-                onCategorySelected = { selectedCategory = it }
+                selectedCategory = categories[pagerState.currentPage],
+                onCategorySelected = { category ->
+                    val index = categories.indexOf(category)
+                    if (index >= 0) {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(
+                                page = index,
+                                animationSpec = androidx.compose.animation.core.tween(durationMillis = 300)
+                            )
+                        }
+                    }
+                }
             )
 
-            // Grid
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                items(filteredTopics) { topic ->
-                    TopicCard(
-                        topic = topic,
-                        onClick = { showBottomSheet = topic }
-                    )
+            // HorizontalPager implementation
+            androidx.compose.foundation.pager.HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f),
+                beyondBoundsPageCount = 1,
+                userScrollEnabled = false
+            ) { page ->
+                val currentCategory = categories[page]
+                val filteredTopics = topics.filter { it.category == currentCategory }
+
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    contentPadding = PaddingValues(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(filteredTopics, key = { it.id }) { topic ->
+                        TopicCard(
+                            topic = topic,
+                            onClick = { showBottomSheet = topic }
+                        )
+                    }
                 }
             }
         }
@@ -115,7 +137,8 @@ fun TopicSelectionScreen(
                     onStartCall = {
                         onTopicSelected(showBottomSheet!!)
                         showBottomSheet = null
-                    }
+                    },
+                    onDismiss = { showBottomSheet = null }
                 )
             }
         }
@@ -251,18 +274,45 @@ fun TopBar() {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Bot Icon
-                Image(
-                    painter = painterResource(id = R.drawable.lyra_speaking),
-                    contentDescription = "Bot Avatar",
+
+
+                Box(
                     modifier = Modifier
+                        .align(Alignment.CenterVertically)
                         .size(32.dp)
-                        .clip(CircleShape)
-                )
+                        .background(BrandRed, CircleShape)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.lyra_speaking),
+                        contentDescription = "Bot Avatar",
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                    )
+                }
+
+               /* Box(
+                    modifier = Modifier
+                        .background(
+                            color = BrandRed,
+                            shape = Roun
+                        )
+                        .padding(horizontal = 12.dp)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.lyra_speaking),
+                        contentDescription = "Bot Avatar",
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                    )
+                }
+*/
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     "Lyra AI",
                     color = Color.White,
-                    fontSize = 24.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = RobotoLight
                 )
@@ -436,7 +486,7 @@ fun TopicCard(
                                 LottieAnimation(
                                     composition = composition,
                                     iterations = LottieConstants.IterateForever,
-                                    modifier = Modifier.size(80.dp)
+                                    modifier = Modifier.size(50.dp)
                                 )
                             } else {
                                 // Loading or Error (Preview) -> Fallback to Icon
@@ -535,44 +585,90 @@ fun TopicCard(
 @Composable
 fun CallConfirmationSheet(
     topic: Topic,
-    onStartCall: () -> Unit
+    onStartCall: () -> Unit,
+    onDismiss: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(24.dp)
     ) {
-        Text(
-            text = "Ready to practice?",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
-            fontFamily = RobotoLight
-        )
+        // Header: Title + Close Button
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Select a method to practice",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                fontFamily = RobotoLight
+            )
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+            }
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        TopicCard(topic = topic, onClick = {}) // Preview selected topic
+        // Progress Bar (Static for design)
+        LinearProgressIndicator(
+            progress = { 0.7f },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp)),
+            color = Color(0xFF6C63FF), // Purple/Blue accent from avatar ring? Or Grey? Let's use a muted accent.
+            trackColor = Color.Gray.copy(alpha = 0.3f),
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "20:00 minutes remaining of free trial",
+            color = Color.Gray,
+            fontSize = 12.sp,
+            fontFamily = RobotoLight
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Button(
-            onClick = onStartCall,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = BrandRed), // New Accent
-            shape = RoundedCornerShape(28.dp)
+        // Action Buttons Row
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(Icons.Default.Phone, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                "Start Call",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = RobotoLight
-            )
+            // Call Button
+            Button(
+                onClick = onStartCall,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                border = BorderStroke(1.dp, Color.Gray),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.Phone, contentDescription = null, tint = Color.White)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Call", fontSize = 16.sp, color = Color.White, fontFamily = RobotoLight)
+            }
+
+            // Chat Button
+            Button(
+                onClick = { /* TODO: Chat action */ },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                border = BorderStroke(1.dp, Color.Gray),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.Email, contentDescription = null, tint = Color.White) // Using Email as chat placeholder
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Chat", fontSize = 16.sp, color = Color.White, fontFamily = RobotoLight)
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
