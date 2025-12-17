@@ -19,6 +19,9 @@ sealed class CallState {
         val aiText: String = "",
         val isComplete: Boolean = false
     ) : CallState()
+
+    // Paused state
+    object Paused : CallState()
     
     // Error state
     data class Error(val message: String) : CallState()

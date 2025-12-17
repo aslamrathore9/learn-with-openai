@@ -77,23 +77,26 @@ class ConversationViewModel(
         
         webRTCClient?.onAiSpeechEnd = {
             Log.d("ConversationViewModel", "✅ AI Finished.")
-            // Only switch if we are currently speaking
-            if (_callState.value is CallState.Speaking) {
                 viewModelScope.launch {
-                    // Estimate audio duration: ~70ms per character (avg speech) + 1.5s buffer
+                    // Restore heuristic delay but OPTIMIZED.
+                    // Previous: (len * 70) + 1500 -> Too long silence.
+                    // Fixed 300ms -> Too short, cuts off AI.
+                    // New: (len * 60) + 500 -> Estimating slightly faster speech + smaller safety buffer.
                     val textLength = currentAiText.length
-                    val estimatedDelay = (textLength * 70L) + 1500L
-                    Log.d("ConversationViewModel", "Waiting $estimatedDelay ms for audio to finish (len=$textLength)")
+                    val estimatedDelay = (textLength * 60L) + 500L 
+                    
+                    Log.d("ConversationViewModel", "AI Finished. Waiting $estimatedDelay ms (len=$textLength) for audio.")
                     
                     kotlinx.coroutines.delay(estimatedDelay) 
                     
                     // Check again in case state changed during delay (e.g. interruption)
                     if (_callState.value is CallState.Speaking) {
                          _callState.value = CallState.Listening()
+                         // Do NOT clear currentAiText immediately if we want it to persist until next user speech?
+                         // But usually we want to clear or keep it. Let's clear for now as per previous logic.
                          currentAiText = ""
                     }
                 }
-            }
         }
         
         webRTCClient?.onDataChannelOpen = {
@@ -196,6 +199,32 @@ class ConversationViewModel(
     
     private fun stopRinging() {
         toneGenerator.stopTone()
+    }
+
+    fun pauseCall() {
+        val currentState = _callState.value
+        if (currentState !is CallState.Idle && currentState !is CallState.Error) {
+             // Save previous state if needed, or just switch to Paused.
+             // For simplicity, we just switch to Paused. Ideally we should mute mic.
+             _callState.value = CallState.Paused
+             stopRinging() // Just in case
+        }
+    }
+
+    fun resumeCall() {
+        if (_callState.value is CallState.Paused) {
+            // Resume to Listening by default or restore previous? 
+            // Defaulting to Listening is safer for now.
+             _callState.value = CallState.Listening()
+        }
+    }
+
+    fun continueConversation() {
+         // Logic for "Continue" button - maybe send a "Continue" message to AI or just listen?
+         // For now, let's treat it as a barge-in helper or just ensure we are listening.
+         if (_callState.value !is CallState.Speaking) {
+             _callState.value = CallState.Listening(isUserSpeaking = true) // Pseudo-state to force UI update
+         }
     }
 
     fun endCall() {

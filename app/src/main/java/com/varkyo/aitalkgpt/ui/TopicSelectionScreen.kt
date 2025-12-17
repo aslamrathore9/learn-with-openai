@@ -129,6 +129,7 @@ fun TopicSelectionScreen(
             val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
             ModalBottomSheet(
                 onDismissRequest = { showBottomSheet = null },
+                dragHandle = null,
                 containerColor = SurfaceDark, // New Surface
                 sheetState = sheetState
             ) {
@@ -486,7 +487,7 @@ fun TopicCard(
                                 LottieAnimation(
                                     composition = composition,
                                     iterations = LottieConstants.IterateForever,
-                                    modifier = Modifier.size(50.dp)
+                                    modifier = Modifier.size(60.dp)
                                 )
                             } else {
                                 // Loading or Error (Preview) -> Fallback to Icon
@@ -803,5 +804,29 @@ fun getTopics(): List<Topic> {
 fun TopicSelectionScreenPreview() {
     MaterialTheme {
         TopicSelectionScreen(onTopicSelected = {})
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+//@Preview(showBackground = true)
+@Composable
+fun CallConfirmationSheetPreview() {
+    val sampleTopic = Topic(
+        id = "sample_topic",
+        title = "Sample Topic",
+        icon = Icons.Default.Face,
+        color = Color(0xFFE91E63),
+        category = "General",
+        practiceCount = 5,
+        lastChatDate = "10 Dec 2025"
+    )
+    MaterialTheme {
+        Box(modifier = Modifier.background(SurfaceDark)) {
+            CallConfirmationSheet(
+                topic = sampleTopic,
+                onStartCall = {},
+                onDismiss = {}
+            )
+        }
     }
 }
