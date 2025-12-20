@@ -121,7 +121,8 @@ fun ConversationScreen(
             
             // 1. AI Avatar
             val isAiSpeaking = state is CallState.Speaking
-            val isAiThinking = state is CallState.Listening && !state.isUserSpeaking && state.userTranscript.isNotEmpty()
+            // Thinking State: Explicit CallState.Thinking, OR Listening but "Thinking" (legacy)
+            val isThinking = state is CallState.Thinking
             val isPaused = state is CallState.Paused
             
             Box(contentAlignment = Alignment.Center) {
@@ -147,11 +148,15 @@ fun ConversationScreen(
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isAiThinking && !isPaused) {
-                         CircularProgressIndicator(
-                             color = Color(0xFF4285F4),
-                             modifier = Modifier.size(60.dp)
-                         )
+                    if (isThinking) {
+                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                             CircularProgressIndicator(
+                                 color = Color(0xFF4285F4),
+                                 modifier = Modifier.size(40.dp),
+                                 strokeWidth = 3.dp
+                             )
+                             // Optional: Text inside or below? User asked for "show text below thinking"
+                         }
                     } else {
                         Image(
                             painter = painterResource(id = R.drawable.lyra_speaking), 
@@ -169,7 +174,12 @@ fun ConversationScreen(
             Spacer(modifier = Modifier.height(12.dp))
             
             Text(
-                text = if (isAiSpeaking && !isPaused) "Lyra Speaking" else if (state is CallState.Connecting) "Connecting..." else "",
+                text = when {
+                    isThinking -> "Thinking..."
+                    isAiSpeaking && !isPaused -> "Lyra Speaking"
+                    state is CallState.Connecting -> "Connecting..."
+                    else -> ""
+                },
                 color = Color.White.copy(alpha = 0.7f),
                 fontSize = 14.sp
             )
@@ -177,7 +187,7 @@ fun ConversationScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             // 2. User Avatar (Stacked below AI)
-            val isUserActive = state is CallState.Listening && !isAiThinking
+            val isUserActive = state is CallState.Listening
             
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(contentAlignment = Alignment.Center) {

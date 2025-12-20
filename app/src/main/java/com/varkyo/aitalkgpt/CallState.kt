@@ -20,6 +20,9 @@ sealed class CallState {
         val isComplete: Boolean = false
     ) : CallState()
 
+    // Thinking state (between user speech end and AI response)
+    object Thinking : CallState()
+
     // Paused state
     object Paused : CallState()
     
