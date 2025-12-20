@@ -83,7 +83,7 @@ class WebRTCClient(
                 
                 // Add Local Audio Track (Microphone)
                 val audioSource = peerConnectionFactory.createAudioSource(MediaConstraints())
-                val localAudioTrack = peerConnectionFactory.createAudioTrack("101", audioSource)
+                localAudioTrack = peerConnectionFactory.createAudioTrack("101", audioSource)
                 peerConnection?.addTrack(localAudioTrack, listOf("streamId"))
 
                 // Create Data Channel for control events
@@ -216,9 +216,21 @@ class WebRTCClient(
     var onConnectionStateChange: ((PeerConnection.PeerConnectionState) -> Unit)? = null
     var onUserSpeechStart: (() -> Unit)? = null
     var onUserSpeechStop: (() -> Unit)? = null
+    var onAiSpeechStart: (() -> Unit)? = null // New Callback
     var onAiSpeechEnd: (() -> Unit)? = null
 
     var onDataChannelOpen: (() -> Unit)? = null
+
+    private var localAudioTrack: AudioTrack? = null // Promoted to class level
+
+    fun setMicrophoneEnabled(enabled: Boolean) {
+        if (localAudioTrack != null) {
+            localAudioTrack?.setEnabled(enabled)
+            Log.d(TAG, "Microphone enabled: $enabled")
+        } else {
+            Log.w(TAG, "Cannot set microphone enabled: Track is null")
+        }
+    }
 
     private fun setupDataChannel(dc: DataChannel?) {
         dc?.registerObserver(object : DataChannel.Observer {
@@ -250,6 +262,11 @@ class WebRTCClient(
                         Log.d(TAG, "User stopped speaking")
                          scope.launch(Dispatchers.Main) {
                              onUserSpeechStop?.invoke()
+                        }
+                    } else if (type == "response.content_part.added") {
+                        // AI Started Speaking (First content part)
+                         scope.launch(Dispatchers.Main) {
+                             onAiSpeechStart?.invoke()
                         }
                     } else if (type == "response.done") {
                         Log.d(TAG, "✅ AI finished speaking (response.done)")

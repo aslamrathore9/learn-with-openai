@@ -60,6 +60,7 @@ fun AppContent() {
     )
 
     val callState by viewModel.callState.collectAsState()
+    val topicTitle by viewModel.currentTopicTitle.collectAsState()
 
     // Navigate between screens based on CallState
     if (callState is CallState.Idle) {
@@ -70,6 +71,7 @@ fun AppContent() {
         // Unified Conversation Screen
         com.varkyo.aitalkgpt.ui.ConversationScreen(
             state = callState,
+            topicTitle = topicTitle,
             onEndCall = { viewModel.endCall() },
             onPause = { viewModel.pauseCall() },
             onResume = { viewModel.resumeCall() },

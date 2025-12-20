@@ -37,6 +37,7 @@ import androidx.compose.ui.tooling.preview.Preview
 @Composable
 fun ConversationScreen(
     state: CallState,
+    topicTitle: String, // Dynamic Title
     onEndCall: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -94,7 +95,7 @@ fun ConversationScreen(
                 )
             }
             Text(
-                text = "Talk about anything", // TODO: Make dynamic from ViewModel if needed
+                text = topicTitle, 
                 color = Color.White,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold
@@ -124,8 +125,14 @@ fun ConversationScreen(
             val isPaused = state is CallState.Paused
             
             Box(contentAlignment = Alignment.Center) {
+                // Lottie Link for AI
                 if (isAiSpeaking && !isPaused) {
-                    RippleAnimation(color = Color(0xFF4285F4)) 
+                    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lyra_microphone))
+                    LottieAnimation(
+                        composition = composition,
+                        iterations = LottieConstants.IterateForever,
+                        modifier = Modifier.size(135.dp) // Subtle border effect (120dp avatar + buffer)
+                    )
                 }
                 
                 Box(
@@ -134,8 +141,8 @@ fun ConversationScreen(
                         .clip(CircleShape)
                         .background(SurfaceDark)
                         .border(
-                            width = if (isAiSpeaking && !isPaused) 4.dp else 0.dp, 
-                            color = if (isAiSpeaking && !isPaused) Color(0xFF4285F4) else Color.Transparent, 
+                            width = if (isAiSpeaking && !isPaused) 3.dp else 0.dp, 
+                            color = if (isAiSpeaking && !isPaused) Color.White else Color.Transparent, 
                             shape = CircleShape
                         ),
                     contentAlignment = Alignment.Center
@@ -162,7 +169,7 @@ fun ConversationScreen(
             Spacer(modifier = Modifier.height(12.dp))
             
             Text(
-                text = if (isAiSpeaking && !isPaused) "ARYA Speaking" else if (state is CallState.Connecting) "Connecting..." else "",
+                text = if (isAiSpeaking && !isPaused) "Lyra Speaking" else if (state is CallState.Connecting) "Connecting..." else "",
                 color = Color.White.copy(alpha = 0.7f),
                 fontSize = 14.sp
             )
@@ -174,8 +181,14 @@ fun ConversationScreen(
             
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(contentAlignment = Alignment.Center) {
+                    // Lottie Link for User
                     if (isUserActive && !isPaused) {
-                        RippleAnimation(color = Color.White)
+                        val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lyra_microphone))
+                        LottieAnimation(
+                            composition = composition,
+                            iterations = LottieConstants.IterateForever,
+                            modifier = Modifier.size(115.dp)
+                        )
                     }
 
                     Box(
@@ -205,7 +218,7 @@ fun ConversationScreen(
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 Text(
-                    text = if (isUserActive && !isPaused) "Listening..." else "Start Speaking",
+                    text = if (isUserActive && !isPaused) "Listening..." else "Wait for your trun",
                     color = Color.White.copy(alpha = 0.5f),
                     fontSize = 14.sp
                 )
@@ -418,6 +431,7 @@ fun RippleAnimation(color: Color) {
 fun PreviewConversationScreen_Idle() { // Connecting State
     ConversationScreen(
         state = CallState.Connecting,
+        topicTitle = "Connecting...",
         onEndCall = {},
         onPause = {},
         onResume = {}
@@ -429,6 +443,7 @@ fun PreviewConversationScreen_Idle() { // Connecting State
 fun PreviewConversationScreen_Speaking() {
     ConversationScreen(
         state = CallState.Speaking(aiText = "Hello, I am ready to help you learn English! Start by telling me about your day."),
+        topicTitle = "Daily Routine",
         onEndCall = {},
         onPause = {},
         onResume = {}
@@ -440,6 +455,7 @@ fun PreviewConversationScreen_Speaking() {
 fun PreviewConversationScreen_Listening() {
     ConversationScreen(
         state = CallState.Listening(isUserSpeaking = true, userTranscript = "I want to learn..."),
+        topicTitle = "Improve Vocabulary",
         onEndCall = {},
         onPause = {},
         onResume = {}
@@ -451,6 +467,7 @@ fun PreviewConversationScreen_Listening() {
 fun PreviewConversationScreen_Paused() {
     ConversationScreen(
         state = CallState.Paused,
+        topicTitle = "Paused Topic",
         onEndCall = {},
         onPause = {},
         onResume = {}
@@ -462,6 +479,7 @@ fun PreviewConversationScreen_Paused() {
 fun PreviewConversationScreen_Error() {
     ConversationScreen(
         state = CallState.Error("Voice not detected"),
+        topicTitle = "Error State",
         onEndCall = {},
         onPause = {},
         onResume = {}

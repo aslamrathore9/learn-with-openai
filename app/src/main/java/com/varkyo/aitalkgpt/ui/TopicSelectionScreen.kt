@@ -808,7 +808,7 @@ fun TopicSelectionScreenPreview() {
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
-//@Preview(showBackground = true)
+@Preview(showBackground = true)
 @Composable
 fun CallConfirmationSheetPreview() {
     val sampleTopic = Topic(

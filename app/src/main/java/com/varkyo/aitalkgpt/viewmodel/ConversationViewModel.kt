@@ -26,9 +26,10 @@ class ConversationViewModel(
 
     // WebRTC Manager
     private var webRTCClient: WebRTCClient? = null
-    
+
     // Ringing Sound
-    private val toneGenerator = android.media.ToneGenerator(android.media.AudioManager.STREAM_VOICE_CALL, 100)
+    private val toneGenerator =
+        android.media.ToneGenerator(android.media.AudioManager.STREAM_VOICE_CALL, 100)
 
     // Main state for three screens
     private val _callState = MutableStateFlow<CallState>(CallState.Idle)
@@ -37,13 +38,16 @@ class ConversationViewModel(
     private val _callDurationSeconds = MutableStateFlow(0L)
     val callDurationSeconds: StateFlow<Long> = _callDurationSeconds.asStateFlow()
 
+    private val _currentTopicTitle = MutableStateFlow("Talk about anything")
+    val currentTopicTitle: StateFlow<String> = _currentTopicTitle.asStateFlow()
+
     private var currentAiText = ""
 
     init {
         // Initialize WebRTC Client
         webRTCClient = WebRTCClient(context, serverBaseUrl)
     }
-    
+
     // Lazy setup to ensure we attach callbacks to the *current* client instance
     private var isCallInitialized = false
 
@@ -51,7 +55,7 @@ class ConversationViewModel(
         if (webRTCClient == null) {
             webRTCClient = WebRTCClient(context, serverBaseUrl)
         }
-        
+
         // ... (data channel and speech callbacks same as before) ...
         webRTCClient?.onDataChannelMessage = { message ->
             handleDataChannelMessage(message)
@@ -60,97 +64,129 @@ class ConversationViewModel(
         webRTCClient?.onUserSpeechStart = {
             Log.d("ConversationViewModel", "⚡ Interruption / Speech Start Detected!")
             if (_callState.value is CallState.Speaking) {
-                 _callState.value = CallState.Listening(isUserSpeaking = true)
-                 currentAiText = ""
+                _callState.value = CallState.Listening(isUserSpeaking = true)
+                currentAiText = ""
             } else if (_callState.value is CallState.Listening) {
                 // Update visualizer state
-                _callState.value = CallState.Listening(isUserSpeaking = true, userTranscript = ( _callState.value as CallState.Listening).userTranscript)
+                _callState.value = CallState.Listening(
+                    isUserSpeaking = true,
+                    userTranscript = (_callState.value as CallState.Listening).userTranscript
+                )
             }
         }
 
         webRTCClient?.onUserSpeechStop = {
             Log.d("ConversationViewModel", "Speech Stopped")
-             if (_callState.value is CallState.Listening) {
-                _callState.value = CallState.Listening(isUserSpeaking = false, userTranscript = ( _callState.value as CallState.Listening).userTranscript)
+            if (_callState.value is CallState.Listening) {
+                _callState.value = CallState.Listening(
+                    isUserSpeaking = false,
+                    userTranscript = (_callState.value as CallState.Listening).userTranscript
+                )
             }
         }
-        
+
+        // Feature: Interruption Control
+        // If false, we mute the mic when AI starts speaking so user cannot interrupt.
+        val isInterruptionEnabled = false 
+
+        webRTCClient?.onAiSpeechStart = {
+            Log.d("ConversationViewModel", "AI Started Speaking. Interruption Enabled: $isInterruptionEnabled")
+            if (!isInterruptionEnabled) {
+                webRTCClient?.setMicrophoneEnabled(false)
+            }
+        }
+
         webRTCClient?.onAiSpeechEnd = {
             Log.d("ConversationViewModel", "✅ AI Finished.")
-                viewModelScope.launch {
-                    // Restore heuristic delay but OPTIMIZED.
-                    // Previous: (len * 70) + 1500 -> Too long silence.
-                    // Fixed 300ms -> Too short, cuts off AI.
-                    // New: (len * 60) + 500 -> Estimating slightly faster speech + smaller safety buffer.
-                    val textLength = currentAiText.length
-                    val estimatedDelay = (textLength * 60L) + 500L 
-                    
-                    Log.d("ConversationViewModel", "AI Finished. Waiting $estimatedDelay ms (len=$textLength) for audio.")
-                    
-                    kotlinx.coroutines.delay(estimatedDelay) 
-                    
-                    // Check again in case state changed during delay (e.g. interruption)
-                    if (_callState.value is CallState.Speaking) {
-                         _callState.value = CallState.Listening()
-                         // Do NOT clear currentAiText immediately if we want it to persist until next user speech?
-                         // But usually we want to clear or keep it. Let's clear for now as per previous logic.
-                         currentAiText = ""
-                    }
+
+            // Always re-enable mic when AI finishes
+            viewModelScope.launch {
+                // Restore heuristic delay but OPTIMIZED.
+                // Previous: (len * 70) + 1500 -> Too long silence.
+                // Fixed 300ms -> Too short, cuts off AI.
+                // New: (len * 60) + 500 -> Estimating slightly faster speech + smaller safety buffer.
+                val textLength = currentAiText.length
+                val estimatedDelay = (textLength * 60L) + 500L
+
+                Log.d(
+                    "ConversationViewModel",
+                    "AI Finished. Waiting $estimatedDelay ms (len=$textLength) for audio."
+                )
+
+                kotlinx.coroutines.delay(estimatedDelay)
+
+                // Always re-enable mic AFTER audio playback finishes
+                if (!isInterruptionEnabled) {
+                     webRTCClient?.setMicrophoneEnabled(true)
                 }
+
+                // Check again in case state changed during delay (e.g. interruption)
+                if (_callState.value is CallState.Speaking) {
+                    _callState.value = CallState.Listening()
+                    // Do NOT clear currentAiText immediately if we want it to persist until next user speech?
+                    // But usually we want to clear or keep it. Let's clear for now as per previous logic.
+                    currentAiText = ""
+                }
+            }
         }
-        
+
         webRTCClient?.onDataChannelOpen = {
             Log.d("ConversationViewModel", "Data Channel OPEN! Sending Greeting...")
-             if (!isCallInitialized) {
-                 isCallInitialized = true
-                 stopRinging()
-                 
-                 // Trigger AI Greeting
-                 val topicTitle = selectedTopic?.title ?: "English Practice"
-                 val greetingInstruction = """
-                     {
-                         "type": "response.create",
-                         "response": {
-                             "modalities": ["text", "audio"],
-                             "instructions": "Greet the user immediately for the topic '$topicTitle'. Say 'Hello! Welcome to $topicTitle session.' and ask a starting question."
-                         }
-                     }
-                 """.trimIndent()
-                 
-                 viewModelScope.launch {
-                     webRTCClient?.sendMessage(greetingInstruction)
-                 }
-             }
+            if (!isCallInitialized) {
+                isCallInitialized = true
+                stopRinging()
+
+                // Trigger AI Greeting
+                val topicTitle = selectedTopic?.title ?: "English Practice"
+                val goal = when {
+                    selectedTopic?.id == "improve_vocabulary" -> "improve your vocabulary"
+                    selectedTopic?.category == "Interview" -> "prepare for your interview"
+                    else -> "improve your English fluency"
+                }
+
+                val greetingInstruction = """
+                            {
+                            "type": "response.create",
+                             "response": {
+                                 "modalities": ["text", "audio"],
+                                      "instructions": "Say simillar: 'Hello! It's wonderful to meet you. I'm Lyra, your friendly English conversation partner. I'm here to help you $goal and practice $topicTitle. Are you ready to start?'"
+                                         }
+                                            }
+                                    """.trimIndent()
+                viewModelScope.launch {
+                    webRTCClient?.sendMessage(greetingInstruction)
+                }
+            }
         }
-        
+
         webRTCClient?.onConnectionStateChange = { state ->
             Log.d("ConversationViewModel", "WebRTC State: $state")
             if (state == org.webrtc.PeerConnection.PeerConnectionState.CONNECTED) {
-                 // Stop ringing but wait for DC Open to init session
-                 stopRinging()
+                // Stop ringing but wait for DC Open to init session
+                stopRinging()
             } else if (state == org.webrtc.PeerConnection.PeerConnectionState.FAILED) {
-                 stopRinging()
-                 _callState.value = CallState.Error("Connection Failed")
+                stopRinging()
+                _callState.value = CallState.Error("Connection Failed")
             }
         }
     }
 
     private fun handleDataChannelMessage(message: String) {
         try {
-             // Parse text delta for Speaking Screen
-             val json = org.json.JSONObject(message)
-             val type = json.optString("type")
-             
-             if (type == "response.audio_transcript.delta") {
-                 val delta = json.optString("delta")
-                 currentAiText += delta
-                 if (_callState.value is CallState.Speaking) {
-                      _callState.value = CallState.Speaking(aiText = currentAiText)
-                 } else {
-                      // If we receive text, we should probably be in Speaking state
-                      _callState.value = CallState.Speaking(aiText = currentAiText)
-                 }
-             }
+            // Parse text delta for Speaking Screen
+            val json = org.json.JSONObject(message)
+            val type = json.optString("type")
+
+            if (type == "response.audio_transcript.delta") {
+                val delta = json.optString("delta")
+                currentAiText += delta
+                if (_callState.value is CallState.Speaking) {
+                    _callState.value = CallState.Speaking(aiText = currentAiText)
+                } else {
+                    // If we receive text, we should probably be in Speaking state
+                    _callState.value = CallState.Speaking(aiText = currentAiText)
+                }
+            }
         } catch (e: Exception) {
             Log.e("ConversationViewModel", "JSON Parse Error", e)
         }
@@ -167,20 +203,21 @@ class ConversationViewModel(
             Log.e("ConversationViewModel", "Cannot start call: No topic selected")
             return
         }
-        
+
         selectedTopic = topicToUse
         _callState.value = CallState.Connecting
         _callDurationSeconds.value = 0L
+        _currentTopicTitle.value = topicToUse.title // Update Title
         currentAiText = ""
         isCallInitialized = false
-        
+
         ensureClientAndCallbacks()
-        
+
         Log.d("ConversationViewModel", "🚀 Starting WebRTC Call for topic: ${topicToUse.title}")
         startRinging()
         webRTCClient?.startSession(topicToUse.id)
     }
-    
+
     private fun startRinging() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
@@ -196,7 +233,7 @@ class ConversationViewModel(
             }
         }
     }
-    
+
     private fun stopRinging() {
         toneGenerator.stopTone()
     }
@@ -204,10 +241,10 @@ class ConversationViewModel(
     fun pauseCall() {
         val currentState = _callState.value
         if (currentState !is CallState.Idle && currentState !is CallState.Error) {
-             // Save previous state if needed, or just switch to Paused.
-             // For simplicity, we just switch to Paused. Ideally we should mute mic.
-             _callState.value = CallState.Paused
-             stopRinging() // Just in case
+            // Save previous state if needed, or just switch to Paused.
+            // For simplicity, we just switch to Paused. Ideally we should mute mic.
+            _callState.value = CallState.Paused
+            stopRinging() // Just in case
         }
     }
 
@@ -215,16 +252,17 @@ class ConversationViewModel(
         if (_callState.value is CallState.Paused) {
             // Resume to Listening by default or restore previous? 
             // Defaulting to Listening is safer for now.
-             _callState.value = CallState.Listening()
+            _callState.value = CallState.Listening()
         }
     }
 
     fun continueConversation() {
-         // Logic for "Continue" button - maybe send a "Continue" message to AI or just listen?
-         // For now, let's treat it as a barge-in helper or just ensure we are listening.
-         if (_callState.value !is CallState.Speaking) {
-             _callState.value = CallState.Listening(isUserSpeaking = true) // Pseudo-state to force UI update
-         }
+        // Logic for "Continue" button - maybe send a "Continue" message to AI or just listen?
+        // For now, let's treat it as a barge-in helper or just ensure we are listening.
+        if (_callState.value !is CallState.Speaking) {
+            _callState.value =
+                CallState.Listening(isUserSpeaking = true) // Pseudo-state to force UI update
+        }
     }
 
     fun endCall() {
@@ -233,7 +271,7 @@ class ConversationViewModel(
             stopRinging()
             _callState.value = CallState.Idle
             _callDurationSeconds.value = 0L
-            
+
             webRTCClient?.close()
             webRTCClient = null // Reset
         }
