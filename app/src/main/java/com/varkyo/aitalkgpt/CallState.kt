@@ -6,6 +6,7 @@ package com.varkyo.aitalkgpt
 sealed class CallState {
     // Call Screen states
     object Idle : CallState()
+    object Initializing : CallState() // Full screen loading
     object Connecting : CallState()
     
     // Listening Screen state

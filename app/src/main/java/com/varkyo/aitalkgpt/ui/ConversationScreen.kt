@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -56,11 +57,18 @@ fun ConversationScreen(
 
     // Sound Effect Trigger
     val previousState = remember { mutableStateOf<CallState?>(null) }
+    
     LaunchedEffect(state) {
         val prev = previousState.value
-        if (prev !is CallState.Speaking && state is CallState.Speaking) {
-             com.varkyo.aitalkgpt.utils.SoundManager.playAiTurnSound()
-        } else if (prev !is CallState.Listening && state is CallState.Listening) {
+        
+        // Play AI Sound when switching to Thinking (User finished speaking)
+        if (prev !is CallState.Thinking && state is CallState.Thinking) {
+            kotlinx.coroutines.delay(400) // Ensure visual switch happens first
+            com.varkyo.aitalkgpt.utils.SoundManager.playAiTurnSound()
+        } 
+        // Play User Sound when switching to Listening (AI finished speaking)
+        else if (prev !is CallState.Listening && state is CallState.Listening) {
+             kotlinx.coroutines.delay(400) // Ensure visual switch happens first
              com.varkyo.aitalkgpt.utils.SoundManager.playUserTurnSound()
         }
         previousState.value = state
@@ -72,7 +80,21 @@ fun ConversationScreen(
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
-        Image(
+        if (state is CallState.Initializing) {
+             Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black), // Or use AppBackground
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = BrandRed,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+        } else {
+            // Normal UI
+            Image(
             painter = painterResource(id = R.drawable.wa_call_bg),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
@@ -83,7 +105,7 @@ fun ConversationScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 5.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -97,7 +119,7 @@ fun ConversationScreen(
             Text(
                 text = topicTitle, 
                 color = Color.White,
-                fontSize = 18.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold
             )
             IconButton(onClick = { /* Settings? */ }) {
@@ -128,7 +150,7 @@ fun ConversationScreen(
             Box(contentAlignment = Alignment.Center) {
                 // Lottie Link for AI
                 if (isAiSpeaking && !isPaused) {
-                    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lyra_microphone))
+                    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lyra_bounce_speaking))
                     LottieAnimation(
                         composition = composition,
                         iterations = LottieConstants.IterateForever,
@@ -138,9 +160,13 @@ fun ConversationScreen(
                 
                 Box(
                     modifier = Modifier
-                        .size(120.dp)
+                        .size(115.dp)
                         .clip(CircleShape)
-                        .background(SurfaceDark)
+                        .background(
+                             brush = Brush.verticalGradient(
+                                 colors = listOf(BrandRed, Color.Black)
+                             )
+                        )
                         .border(
                             width = if (isAiSpeaking && !isPaused) 3.dp else 0.dp, 
                             color = if (isAiSpeaking && !isPaused) Color.White else Color.Transparent, 
@@ -149,20 +175,19 @@ fun ConversationScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     if (isThinking) {
-                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                             CircularProgressIndicator(
-                                 color = Color(0xFF4285F4),
-                                 modifier = Modifier.size(40.dp),
-                                 strokeWidth = 3.dp
-                             )
-                             // Optional: Text inside or below? User asked for "show text below thinking"
-                         }
+                         val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lyra_horizontal_loading))
+                         LottieAnimation(
+                             composition = composition,
+                             iterations = LottieConstants.IterateForever,
+                             modifier = Modifier.width(110.dp).height(100.dp)
+                         )
                     } else {
                         Image(
                             painter = painterResource(id = R.drawable.lyra_speaking), 
                             contentDescription = "AI Avatar",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
+                                .padding(10.dp)
                                 .fillMaxSize()
                                 .scale(if (isAiSpeaking && !isPaused) 1.1f else 1f),
                             colorFilter = if(isPaused) androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) }) else null
@@ -171,16 +196,16 @@ fun ConversationScreen(
                 }
             }
             
-            Spacer(modifier = Modifier.height(12.dp))
+//            Spacer(modifier = Modifier.height(1.dp))
             
             Text(
                 text = when {
-                    isThinking -> "Thinking..."
+                    isThinking -> "Lyra is thinking"
                     isAiSpeaking && !isPaused -> "Lyra Speaking"
                     state is CallState.Connecting -> "Connecting..."
                     else -> ""
                 },
-                color = Color.White.copy(alpha = 0.7f),
+                color = Color.White.copy(alpha = 0.5f),
                 fontSize = 14.sp
             )
             
@@ -193,7 +218,7 @@ fun ConversationScreen(
                 Box(contentAlignment = Alignment.Center) {
                     // Lottie Link for User
                     if (isUserActive && !isPaused) {
-                        val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lyra_microphone))
+                        val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lyra_bounce_speaking))
                         LottieAnimation(
                             composition = composition,
                             iterations = LottieConstants.IterateForever,
@@ -225,12 +250,12 @@ fun ConversationScreen(
                     }
                 }
                 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 
                 Text(
                     text = if (isUserActive && !isPaused) "Listening..." else "Wait for your trun",
                     color = Color.White.copy(alpha = 0.5f),
-                    fontSize = 14.sp
+                    fontSize = 12.sp
                 )
             }
 
@@ -372,6 +397,7 @@ fun ConversationScreen(
             )
         }
     }
+}
 }
 
 @Composable

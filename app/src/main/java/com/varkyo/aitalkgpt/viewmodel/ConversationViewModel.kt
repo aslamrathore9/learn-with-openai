@@ -72,7 +72,8 @@ class ConversationViewModel(
             audioClient?.sendJson(greetingMsg)
             
             // Set to Thinking while waiting for Greeting
-             _callState.value = CallState.Thinking
+            // Do NOT set to Thinking here. Stay in Initializing until audio starts.
+            // _callState.value = CallState.Thinking
         }
         
         audioClient?.onFailure = { error ->
@@ -151,7 +152,7 @@ class ConversationViewModel(
         }
 
         selectedTopic = topicToUse
-        _callState.value = CallState.Connecting
+        _callState.value = CallState.Initializing
         _callDurationSeconds.value = 0L
         _currentTopicTitle.value = topicToUse.title
         currentAiText = ""
