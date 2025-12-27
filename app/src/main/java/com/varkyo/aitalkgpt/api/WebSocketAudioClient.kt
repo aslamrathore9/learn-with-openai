@@ -167,6 +167,15 @@ class WebSocketAudioClient(
     private fun startAudioPlayback() {
         if (audioTrack != null) return
 
+        // Configure AudioManager for Speakerphone
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        try {
+            audioManager.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
+            audioManager.isSpeakerphoneOn = true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set speakerphone", e)
+        }
+
         val bufferSize = AudioTrack.getMinBufferSize(
             PLAYBACK_SAMPLE_RATE,
             AudioFormat.CHANNEL_OUT_MONO,
@@ -209,6 +218,15 @@ class WebSocketAudioClient(
             audioTrack?.release()
         } catch (e: Exception) { e.printStackTrace() }
         audioTrack = null
+
+        // Restore Audio Settings
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        try {
+            audioManager.isSpeakerphoneOn = false
+            audioManager.mode = android.media.AudioManager.MODE_NORMAL
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to restore audio settings", e)
+        }
     }
 
     // ==========================================

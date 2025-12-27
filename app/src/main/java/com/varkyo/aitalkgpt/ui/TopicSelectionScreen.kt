@@ -44,7 +44,7 @@ import com.varkyo.aitalkgpt.ui.theme.BrandRed
 import com.varkyo.aitalkgpt.ui.theme.SurfaceDark
 import com.varkyo.aitalkgpt.ui.theme.SurfaceDark2
 
-val RobotoLight = FontFamily(Font(R.font.roboto_light))
+val RobotoLight = FontFamily(Font(R.font.nunito_light))
 
 data class Topic(
     val id: String,

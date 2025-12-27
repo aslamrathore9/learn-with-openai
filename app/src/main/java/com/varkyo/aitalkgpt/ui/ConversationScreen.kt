@@ -14,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,21 +57,25 @@ fun ConversationScreen(
         label = "pulseAlpha"
     )
 
+    // Preload Lottie Compositions
+    val speakingComposition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lyra_bounce_speaking))
+    val thinkingComposition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lyra_horizontal_loading))
+
     // Sound Effect Trigger
     val previousState = remember { mutableStateOf<CallState?>(null) }
-    
+
     LaunchedEffect(state) {
         val prev = previousState.value
-        
+
         // Play AI Sound when switching to Thinking (User finished speaking)
         if (prev !is CallState.Thinking && state is CallState.Thinking) {
             kotlinx.coroutines.delay(400) // Ensure visual switch happens first
             com.varkyo.aitalkgpt.utils.SoundManager.playAiTurnSound()
-        } 
+        }
         // Play User Sound when switching to Listening (AI finished speaking)
         else if (prev !is CallState.Listening && state is CallState.Listening) {
-             kotlinx.coroutines.delay(400) // Ensure visual switch happens first
-             com.varkyo.aitalkgpt.utils.SoundManager.playUserTurnSound()
+            kotlinx.coroutines.delay(400) // Ensure visual switch happens first
+            com.varkyo.aitalkgpt.utils.SoundManager.playUserTurnSound()
         }
         previousState.value = state
     }
@@ -81,7 +87,7 @@ fun ConversationScreen(
             .navigationBarsPadding()
     ) {
         if (state is CallState.Initializing) {
-             Box(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black), // Or use AppBackground
@@ -95,309 +101,351 @@ fun ConversationScreen(
         } else {
             // Normal UI
             Image(
-            painter = painterResource(id = R.drawable.wa_call_bg),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
-
-        // Top Bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 5.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onEndCall) {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Color.White
-                )
-            }
-            Text(
-                text = topicTitle, 
-                color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold
+                painter = painterResource(id = R.drawable.wa_call_bg),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
             )
-            IconButton(onClick = { /* Settings? */ }) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Settings",
-                    tint = Color.White
-                )
-            }
-        }
 
-        // Avatars & Content
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 70.dp, bottom = 120.dp), // Clear TopBar and ControlBar area
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            
-            // --- TOP HALF: AI AVATAR & USER AVATAR ---
-            
-            // 1. AI Avatar
-            val isAiSpeaking = state is CallState.Speaking
-            // Thinking State: Explicit CallState.Thinking, OR Listening but "Thinking" (legacy)
-            val isThinking = state is CallState.Thinking
-            val isPaused = state is CallState.Paused
-            
-            Box(contentAlignment = Alignment.Center) {
-                // Lottie Link for AI
-                if (isAiSpeaking && !isPaused) {
-                    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lyra_bounce_speaking))
-                    LottieAnimation(
-                        composition = composition,
-                        iterations = LottieConstants.IterateForever,
-                        modifier = Modifier.size(135.dp) // Subtle border effect (120dp avatar + buffer)
+            // Top Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 5.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onEndCall) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White
                     )
                 }
-                
-                Box(
-                    modifier = Modifier
-                        .size(115.dp)
-                        .clip(CircleShape)
-                        .background(
-                             brush = Brush.verticalGradient(
-                                 colors = listOf(BrandRed, Color.Black)
-                             )
-                        )
-                        .border(
-                            width = if (isAiSpeaking && !isPaused) 3.dp else 0.dp, 
-                            color = if (isAiSpeaking && !isPaused) Color.White else Color.Transparent, 
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isThinking) {
-                         val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lyra_horizontal_loading))
-                         LottieAnimation(
-                             composition = composition,
-                             iterations = LottieConstants.IterateForever,
-                             modifier = Modifier.width(110.dp).height(100.dp)
-                         )
-                    } else {
-                        Image(
-                            painter = painterResource(id = R.drawable.lyra_speaking), 
-                            contentDescription = "AI Avatar",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .padding(10.dp)
-                                .fillMaxSize()
-                                .scale(if (isAiSpeaking && !isPaused) 1.1f else 1f),
-                            colorFilter = if(isPaused) androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) }) else null
-                        )
-                    }
+                Text(
+                    text = topicTitle,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                IconButton(onClick = { /* Settings? */ }) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = Color.White
+                    )
                 }
             }
-            
-//            Spacer(modifier = Modifier.height(1.dp))
-            
-            Text(
-                text = when {
-                    isThinking -> "Lyra is thinking"
-                    isAiSpeaking && !isPaused -> "Lyra Speaking"
-                    state is CallState.Connecting -> "Connecting..."
-                    else -> ""
-                },
-                color = Color.White.copy(alpha = 0.5f),
-                fontSize = 14.sp
-            )
-            
-            Spacer(modifier = Modifier.height(24.dp))
 
-            // 2. User Avatar (Stacked below AI)
-            val isUserActive = state is CallState.Listening
-            
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // Avatars & Content
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 70.dp, bottom = 120.dp), // Clear TopBar and ControlBar area
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+
+                // --- TOP HALF: AI AVATAR & USER AVATAR ---
+
+                // 1. AI Avatar
+                val isAiSpeaking = state is CallState.Speaking
+                // Thinking State: Explicit CallState.Thinking, OR Listening but "Thinking" (legacy)
+                val isThinking = state is CallState.Thinking
+                val isPaused = state is CallState.Paused
+
                 Box(contentAlignment = Alignment.Center) {
-                    // Lottie Link for User
-                    if (isUserActive && !isPaused) {
-                        val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lyra_bounce_speaking))
+                    // Lottie Link for AI
+                    if (isAiSpeaking && !isPaused) {
                         LottieAnimation(
-                            composition = composition,
+                            composition = speakingComposition,
                             iterations = LottieConstants.IterateForever,
-                            modifier = Modifier.size(115.dp)
+                            modifier = Modifier.size(135.dp) // Subtle border effect (120dp avatar + buffer)
                         )
                     }
 
                     Box(
                         modifier = Modifier
-                            .size(100.dp)
+                            .size(115.dp)
                             .clip(CircleShape)
-                            .background(Color.Gray)
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(BrandRed, Color.Black)
+                                )
+                            )
                             .border(
-                                width = if (isUserActive && !isPaused) 4.dp else 0.dp,
-                                color = if (isUserActive && !isPaused) Color.White else Color.Transparent,
+                                width = if (isAiSpeaking && !isPaused) 3.dp else 0.dp,
+                                color = if (isAiSpeaking && !isPaused) Color.White else Color.Transparent,
                                 shape = CircleShape
                             ),
-                         contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.Center
                     ) {
-                         Image(
-                            painter = painterResource(id = R.drawable.male), 
-                            contentDescription = "User Avatar",
-                            modifier = Modifier
-                                .fillMaxSize() // Use fillMaxSize for crop
-                                .scale(if (isUserActive && !isPaused) 1.1f else 1f),
-                            contentScale = ContentScale.Crop, // Crop to circle
-                            colorFilter = if(isPaused) androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) }) else null
-                        )
+                        if (isThinking) {
+                            LottieAnimation(
+                                composition = thinkingComposition,
+                                iterations = LottieConstants.IterateForever,
+                                modifier = Modifier.width(110.dp).height(100.dp)
+                            )
+                        } else {
+                            Image(
+                                painter = painterResource(id = R.drawable.lyra_speaking),
+                                contentDescription = "AI Avatar",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .padding(10.dp)
+                                    .fillMaxSize()
+                                    .scale(if (isAiSpeaking && !isPaused) 1.1f else 1f),
+                                colorFilter = if(isPaused) androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) }) else null
+                            )
+                        }
                     }
                 }
-                
-                Spacer(modifier = Modifier.height(2.dp))
-                
+
+//            Spacer(modifier = Modifier.height(1.dp))
+
                 Text(
-                    text = if (isUserActive && !isPaused) "Listening..." else "Wait for your trun",
+                    text = when {
+                        isThinking -> "Lyra is thinking"
+                        isAiSpeaking && !isPaused -> "Lyra Speaking"
+                        state is CallState.Connecting -> "Connecting..."
+                        else -> ""
+                    },
                     color = Color.White.copy(alpha = 0.5f),
-                    fontSize = 12.sp
+                    fontSize = 14.sp
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // 2. User Avatar (Stacked below AI)
+                val isUserActive = state is CallState.Listening
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(contentAlignment = Alignment.Center) {
+                        // Lottie Link for User
+                        if (isUserActive && !isPaused) {
+                            LottieAnimation(
+                                composition = speakingComposition,
+                                iterations = LottieConstants.IterateForever,
+                                modifier = Modifier.size(115.dp)
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(100.dp)
+                                .clip(CircleShape)
+                                .background(Color.Gray)
+                                .border(
+                                    width = if (isUserActive && !isPaused) 4.dp else 0.dp,
+                                    color = if (isUserActive && !isPaused) Color.White else Color.Transparent,
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(id = R.drawable.male),
+                                contentDescription = "User Avatar",
+                                modifier = Modifier
+                                    .fillMaxSize() // Use fillMaxSize for crop
+                                    .scale(if (isUserActive && !isPaused) 1.1f else 1f),
+                                contentScale = ContentScale.Crop, // Crop to circle
+                                colorFilter = if(isPaused) androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) }) else null
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Text(
+                        text = if (isUserActive && !isPaused) "Listening..." else "Wait for your trun",
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 12.sp
+                    )
+                }
+
+
+                // --- BOTTOM HALF: ALERTS & CAPTIONS ---
+
+                // Spacer fills the gap between User and Caption
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center // Alerts in the middle of this gap
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        // Alerts (Voice not detected / Paused)
+                        if (state is CallState.Error) {
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0xFF2E3240).copy(alpha=0.9f), RoundedCornerShape(12.dp))
+                                    .border(1.dp, Color(0xFFE91E63), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                                    .clickable { onContinue() }
+                            ) {
+                                Text(
+                                    "Voice not detected, tap to retry",
+                                    color = Color(0xFFE91E63),
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+
+                        if (state is CallState.Paused) {
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0xFF2E3240).copy(alpha=0.9f), RoundedCornerShape(24.dp))
+                                    .border(1.dp, Color(0xFF3E4250), RoundedCornerShape(24.dp))
+                                    .padding(horizontal = 24.dp, vertical = 12.dp)
+                                    .clickable { onResume() }
+                            ) {
+                                Text("Press to continue", color = Color.White, fontSize = 16.sp)
+                            }
+                        }
+                    }
+                }
+
+                // 4. Caption (Fixed at Bottom of Column, above Controls)
+                if (state is CallState.Speaking && state.aiText.isNotEmpty()) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E222B)),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFF2A2E39)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, bottom = 24.dp)
+                    ) {
+                        Column {
+                            // Header Box with distinct background
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        brush = Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color(0xFF07191A), // Start Color
+                                                Color(0xFF022928)  // End Color (Darker Blue)
+                                            )
+                                        )
+                                    )
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.align(Alignment.Center),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.cc),
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFC107),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        "ARYA Captions",
+                                        color = Color(0xFFFFC107),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = Color(0xFF566373),
+                                    modifier = Modifier
+                                        .align(Alignment.CenterEnd)
+                                        .size(16.dp)
+                                        .clickable { /* Close logic */ }
+                                )
+                            }
+
+                            HorizontalDivider(thickness = 1.dp, color = Color(0xFF2A2E39))
+
+                            Box(
+                                modifier = Modifier
+                                    .background(
+                                        brush = Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color(0xFF07191A), // Start Color
+                                                Color(0xFF022928)  // End Color (Darker Blue)
+                                            )
+                                        )
+                                    )
+                                    .padding(16.dp)
+                                    .heightIn(max = 100.dp) // Adjusted for padding (16*2) + ~3 lines (20*3)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                Text(
+                                    text = state.aiText,
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Bottom Control Bar
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp, start = 24.dp, end = 24.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Hint
+                ControlButton(
+                    icon = Icons.Default.Star, // Placeholder for Sparkles
+                    label = "Hint",
+                    color = Color(0xFF1E222B),
+                    iconTint = Color.White
+                )
+
+                // Caption
+                ControlButton(
+                    icon = Icons.Default.Info, // Placeholder for CC
+                    label = "Caption",
+                    color = Color.White, // Active state example
+                    iconTint = Color.Black
+                )
+
+                // Pause / Resume
+                val isPaused = state is CallState.Paused
+                ControlButton(
+                    icon = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Menu, // Using Menu as placeholder for pause lines if needed, or stick to standard
+                    label = if (isPaused) "Resume" else "Pause",
+                    color = Color.White,
+                    iconTint = Color.Black,
+                    onClick = { if (isPaused) onResume() else onPause() }
+                )
+
+                // Continue
+                ControlButton(
+                    icon = Icons.Default.Send,
+                    label = "Continue",
+                    color = Color(0xFF1E222B),
+                    iconTint = Color.White,
+                    onClick = onContinue
+                )
+
+                // End
+                ControlButton(
+                    icon = Icons.Default.Close,
+                    label = "End",
+                    color = BrandRed,
+                    iconTint = Color.White,
+                    onClick = onEndCall
                 )
             }
-
-
-            // --- BOTTOM HALF: ALERTS & CAPTIONS ---
-            
-            // Spacer fills the gap between User and Caption
-            Box(
-                modifier = Modifier
-                    .weight(1f) 
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center // Alerts in the middle of this gap
-            ) {
-                 Column(
-                     horizontalAlignment = Alignment.CenterHorizontally,
-                     verticalArrangement = Arrangement.Center
-                 ) {
-                    // Alerts (Voice not detected / Paused)
-                    if (state is CallState.Error) {
-                         Box(
-                            modifier = Modifier
-                                .background(Color(0xFF2E3240).copy(alpha=0.9f), RoundedCornerShape(12.dp))
-                                .border(1.dp, Color(0xFFE91E63), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 24.dp, vertical = 16.dp)
-                                .clickable { onContinue() } 
-                        ) {
-                            Text(
-                                "Voice not detected, tap to retry", 
-                                color = Color(0xFFE91E63), 
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                    
-                    if (state is CallState.Paused) {
-                         Box(
-                            modifier = Modifier
-                                .background(Color(0xFF2E3240).copy(alpha=0.9f), RoundedCornerShape(24.dp))
-                                .border(1.dp, Color(0xFF3E4250), RoundedCornerShape(24.dp))
-                                .padding(horizontal = 24.dp, vertical = 12.dp)
-                                .clickable { onResume() }
-                        ) {
-                            Text("Press to continue", color = Color.White, fontSize = 16.sp)
-                        }
-                    }
-                 }
-            }
-            
-            // 4. Caption (Fixed at Bottom of Column, above Controls)
-             if (state is CallState.Speaking && state.aiText.isNotEmpty()) {
-                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E222B)),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFF2A2E39)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, bottom = 24.dp) 
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_launcher_foreground), 
-                                contentDescription = null, 
-                                tint = Color(0xFFFFC107),
-                                modifier = Modifier.size(16.dp) 
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "ARYA Captions", 
-                                color = Color(0xFFFFC107), 
-                                fontSize = 12.sp, 
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = state.aiText,
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp
-                        )
-                    }
-                }
-            }
-        }
-
-        // Bottom Control Bar
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(bottom = 32.dp, start = 24.dp, end = 24.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Hint
-            ControlButton(
-                icon = Icons.Default.Star, // Placeholder for Sparkles
-                label = "Hint",
-                color = Color(0xFF1E222B),
-                iconTint = Color.White 
-            )
-            
-            // Caption
-            ControlButton(
-                icon = Icons.Default.Info, // Placeholder for CC
-                label = "Caption",
-                color = Color.White, // Active state example
-                iconTint = Color.Black
-            )
-
-            // Pause / Resume
-            val isPaused = state is CallState.Paused
-            ControlButton(
-                icon = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Menu, // Using Menu as placeholder for pause lines if needed, or stick to standard
-                label = if (isPaused) "Resume" else "Pause",
-                color = Color.White,
-                iconTint = Color.Black,
-                onClick = { if (isPaused) onResume() else onPause() }
-            )
-
-            // Continue
-             ControlButton(
-                icon = Icons.Default.Send,
-                label = "Continue",
-                color = Color(0xFF1E222B),
-                iconTint = Color.White,
-                onClick = onContinue
-            )
-
-            // End
-            ControlButton(
-                icon = Icons.Default.Close,
-                label = "End",
-                color = BrandRed,
-                iconTint = Color.White,
-                onClick = onEndCall
-            )
         }
     }
-}
 }
 
 @Composable
@@ -417,9 +465,9 @@ fun ControlButton(
                 .size(48.dp)
                 .background(color, CircleShape)
                 .border(
-                     width = if(color == Color(0xFF1E222B)) 1.dp else 0.dp,
-                     color = Color(0xFF2A2E39),
-                     shape = CircleShape
+                    width = if(color == Color(0xFF1E222B)) 1.dp else 0.dp,
+                    color = Color(0xFF2A2E39),
+                    shape = CircleShape
                 ),
             contentAlignment = Alignment.Center
         ) {
@@ -433,7 +481,7 @@ fun ControlButton(
 @Composable
 fun RippleAnimation(color: Color) {
     val infiniteTransition = rememberInfiniteTransition(label = "ripple")
-    
+
     val scale by infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = 1.4f,
@@ -443,7 +491,7 @@ fun RippleAnimation(color: Color) {
         ),
         label = "scale"
     )
-    
+
     val alpha by infiniteTransition.animateFloat(
         initialValue = 0.5f,
         targetValue = 0f,
@@ -453,7 +501,7 @@ fun RippleAnimation(color: Color) {
         ),
         label = "alpha"
     )
-    
+
     Box(
         modifier = Modifier
             .size(120.dp) // Base size matches avatar
