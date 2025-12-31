@@ -274,15 +274,13 @@ class ConversationViewModel(
                 is CallState.Speaking -> {
                     audioClient?.resumeAudioPlayback()
                     // If audio finished while paused (isComplete), we need to transition to Listening
-                    // We add a small delay to allow buffered audio to play (approximate)
+                    // Since we've updated WebSocketAudioClient to sync onAiAudioEnd with playback completion,
+                    // we can rely on onAiAudioEnd firing when the queue empties.
                     if (previousState.isComplete) {
-                        viewModelScope.launch {
-                            kotlinx.coroutines.delay(1000) 
-                            if (!isEnding && _callState.value is CallState.Speaking) {
-                                 _callState.value = CallState.Listening()
-                                 startRecordingSafe()
-                            }
-                        }
+                        // If it was already complete, it means the server finished.
+                        // The playback queue might still have data (which we are now playing).
+                        // When that empties, onAiAudioEnd will fire, and we'll transition there.
+                        // So we just play and wait.
                     }
                 }
                 is CallState.Thinking -> {
@@ -300,9 +298,40 @@ class ConversationViewModel(
     }
 
     fun continueConversation() {
-         if (_callState.value !is CallState.Speaking) {
-            _callState.value = CallState.Listening(isUserSpeaking = true) 
-        }
+         val currentState = _callState.value
+         
+         if (currentState is CallState.Speaking) {
+             // Stop Lyra AI (Interrupt) -> Switch to User
+             audioClient?.interruptAudioPlayback()
+             
+             // We should also probably tell the server to stop generating?
+             // Since we don't have a direct "cancel" message defined in standard usage yet, we just rely on VAD or silence.
+             // But stopping playback and switching to listening is good.
+             
+             _callState.value = CallState.Listening()
+             startRecordingSafe()
+             
+         } else if (currentState is CallState.Listening) {
+             // User already speaking -> Listen again (Restart)
+             // Stop and Start to ensure fresh state/VAD reset if needed
+             audioClient?.stopAudioRecording()
+             
+             // Small delay to ensure clean restart?
+             // Or just start immediately. WebSocketAudioClient checks isRecording flag. 
+             // We can do a coroutine launch to create a small gap if needed.
+             viewModelScope.launch {
+                 // kotlin.io.println("Restarting listening...")
+                 // delay(50) 
+                 startRecordingSafe()
+                 // Ensure state is Listening (it already is, but just in case)
+                 _callState.value = CallState.Listening(isUserSpeaking = false) // Reset speaking indicator? "listen again"
+             }
+         } else if (currentState !is CallState.Paused && currentState !is CallState.Initializing) {
+              // Default behavior for other states (Thinking, etc.)
+            _callState.value = CallState.Listening(isUserSpeaking = false) 
+            startRecordingSafe()
+         }
+         // Paused handled in UI
     }
 
     fun endCall() {

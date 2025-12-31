@@ -55,11 +55,19 @@ class WebSocketAudioClient(
     var onAiAudioEnd: (() -> Unit)? = null
 
 
+    // Audio Queue for buffering
+    private val audioQueue = java.util.concurrent.LinkedBlockingQueue<ByteArray>()
+    private var isOutputInterrupted = false
+    private var isServerAudioFinished = false
+
     fun connect() {
         // Ensure ws:// or wss://
         val wsUrl = serverUrl.replace("http://", "ws://").replace("https://", "wss://")
         val request = Request.Builder().url(wsUrl).build()
         
+        // Start Playback Loop
+        startPlaybackLoop()
+
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d(TAG, "Connected to Server")
@@ -74,8 +82,9 @@ class WebSocketAudioClient(
 
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
                 // Audio Data (PCM)
-                // Log.d(TAG, "Received Audio: ${bytes.size()} bytes")
-                writeAudioToTrack(bytes.toByteArray())
+                if (!isOutputInterrupted) {
+                    audioQueue.offer(bytes.toByteArray())
+                }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -93,6 +102,39 @@ class WebSocketAudioClient(
             }
         })
     }
+    
+    private fun startPlaybackLoop() {
+        scope.launch(Dispatchers.IO) {
+            while (true) {
+                try {
+                    // Only process queue if we are actively playing
+                    if (isPlaying.get() && audioTrack != null && !isOutputInterrupted) {
+                        
+                        // Poll with timeout to allow checking flags
+                        val data = audioQueue.poll(50, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        
+                        if (data != null) {
+                             val written = audioTrack?.write(data, 0, data.size) ?: 0
+                             if (written < 0) {
+                                 Log.w(TAG, "AudioTrack write error: $written")
+                             }
+                        } else {
+                            // Queue empty. Check if we are finished.
+                            if (isServerAudioFinished && audioQueue.isEmpty() && !isOutputInterrupted) {
+                                isServerAudioFinished = false // Reset
+                                scope.launch(Dispatchers.Main) { onAiAudioEnd?.invoke() }
+                            }
+                        }
+                    } else {
+                        // Paused or not ready. Wait a bit to avoid CPU spin.
+                        kotlinx.coroutines.delay(100)
+                    }
+                } catch(e: Exception) {
+                    Log.e(TAG, "Playback Loop Error", e)
+                }
+            }
+        }
+    }
 
     private fun handleTextMessage(text: String) {
         try {
@@ -103,8 +145,17 @@ class WebSocketAudioClient(
                 when (type) {
                     "vad.speech_start" -> onVadSpeechStart?.invoke()
                     "vad.speech_end" -> onVadSpeechEnd?.invoke()
-                    "assistant.audio.start" -> onAiAudioStart?.invoke()
-                    "assistant.audio.end" -> onAiAudioEnd?.invoke()
+                    "assistant.audio.start" -> {
+                         isOutputInterrupted = false
+                         isServerAudioFinished = false
+                         audioQueue.clear()
+                         onAiAudioStart?.invoke()
+                    }
+                    "assistant.audio.end" -> {
+                        // Mark server finished, but don't fire callback yet.
+                        // Playback loop will fire it when queue is empty.
+                        isServerAudioFinished = true
+                    }
                     else -> onMessage?.invoke(text)
                 }
             }
@@ -205,13 +256,6 @@ class WebSocketAudioClient(
         Log.d(TAG, "AudioTrack Started")
     }
 
-    private fun writeAudioToTrack(pcmData: ByteArray) {
-        // Write even if paused (it will buffer in the AudioTrack)
-        if (audioTrack != null) {
-            audioTrack?.write(pcmData, 0, pcmData.size)
-        }
-    }
-
     private fun stopAudioPlayback() {
         isPlaying.set(false)
         try {
@@ -250,6 +294,24 @@ class WebSocketAudioClient(
                 Log.d(TAG, "AudioTrack Resumed")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to resume audio", e)
+            }
+        }
+    }
+
+    fun interruptAudioPlayback() {
+        isOutputInterrupted = true
+        audioQueue.clear() // Clear pending
+        isServerAudioFinished = false // Reset
+
+        if (audioTrack != null) {
+            try {
+                audioTrack?.pause()
+                audioTrack?.flush()
+                audioTrack?.play() // Ready for next
+                isPlaying.set(true)
+                Log.d(TAG, "AudioTrack Interrupted and Flushed")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to interrupt audio", e)
             }
         }
     }
