@@ -69,13 +69,17 @@ fun AppContent() {
         )
     } else {
         // Unified Conversation Screen
+        val hintSuggestion by viewModel.hintSuggestion.collectAsState()
+        
         com.varkyo.aitalkgpt.ui.ConversationScreen(
             state = callState,
             topicTitle = topicTitle,
             onEndCall = { viewModel.endCall() },
             onPause = { viewModel.pauseCall() },
             onResume = { viewModel.resumeCall() },
-            onContinue = { viewModel.continueConversation() }
+            onContinue = { viewModel.continueConversation() },
+            onRequestHint = { viewModel.requestHint() },
+            hintSuggestion = hintSuggestion
         )
     }
 }

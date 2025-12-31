@@ -41,6 +41,9 @@ class ConversationViewModel(
     private val _currentTopicTitle = MutableStateFlow("Talk about anything")
     val currentTopicTitle: StateFlow<String> = _currentTopicTitle.asStateFlow()
 
+    private val _hintSuggestion = MutableStateFlow<String?>(null)
+    val hintSuggestion: StateFlow<String?> = _hintSuggestion.asStateFlow()
+
     private var currentAiText = ""
     
     // Flag to prevent state changes during cleanup
@@ -88,23 +91,32 @@ class ConversationViewModel(
         }
         
         audioClient?.onVadSpeechStart = {
-             Log.d("ConversationViewModel", "User Speech Started")
-             if (!isEnding && _callState.value is CallState.Listening) {
-                 _callState.value = CallState.Listening(isUserSpeaking = true)
-             }
+             val currentState = _callState.value
+             // User started speaking -> Stop AI Audio immediately
+             // This is "Barge-In"
+             audioClient?.interruptAudioPlayback()
+             
+             Log.d("ConversationViewModel", "VAD Speech Start -> AI Interrupted")
+             
+              if (currentState is CallState.Listening) {
+                  // Switch to Thinking immediately when VAD detects silence
+                  // Wait, VAD Start means speech STARTED.
+                  // We usually stay in Listening (UserSpeaking) until End.
+                  // But we can update state to reflect activity.
+              } else if (currentState is CallState.Paused && currentState.previousState is CallState.Listening) {
+                  // Update pending state
+                  _callState.value = currentState.copy(previousState = CallState.Thinking)
+              }
         }
         
         audioClient?.onVadSpeechEnd = {
-             Log.d("ConversationViewModel", "User Speech Ended")
+             // User finished speaking a phrase
+             Log.d("ConversationViewModel", "VAD Speech End -> Switching to Thinking & Hint Cleared")
+             // Clear hint here
+             _hintSuggestion.value = null
+             
              if (!isEnding) {
-                  val currentState = _callState.value
-                  if (currentState is CallState.Listening) {
-                      // Switch to Thinking immediately when VAD detects silence
-                      _callState.value = CallState.Thinking
-                  } else if (currentState is CallState.Paused && currentState.previousState is CallState.Listening) {
-                      // Update pending state
-                      _callState.value = currentState.copy(previousState = CallState.Thinking)
-                  }
+                 _callState.value = CallState.Thinking
              }
         }
         
@@ -131,6 +143,9 @@ class ConversationViewModel(
                      if (!isEnding) {
                          _callState.value = CallState.Thinking
                      }
+                } else if (msgType == "hint") {
+                     val suggestion = json.optString("suggestion")
+                     _hintSuggestion.value = suggestion
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -300,6 +315,9 @@ class ConversationViewModel(
     fun continueConversation() {
          val currentState = _callState.value
          
+         // Clear hint when user continues or speaks
+         _hintSuggestion.value = null
+         
          if (currentState is CallState.Speaking) {
              // Stop Lyra AI (Interrupt) -> Switch to User
              audioClient?.interruptAudioPlayback()
@@ -332,6 +350,21 @@ class ConversationViewModel(
             startRecordingSafe()
          }
          // Paused handled in UI
+    }
+
+    fun requestHint() {
+        Log.d("ConversationViewModel", "⭐ requestHint() called")
+        val currentState = _callState.value
+        Log.d("ConversationViewModel", "Current State: $currentState")
+        
+        if (currentState is CallState.Listening) {
+             Log.d("ConversationViewModel", "Sending hint request...")
+             _hintSuggestion.value = null // Clear previous
+             val msg = """{"type": "request_hint"}"""
+             audioClient?.sendJson(msg)
+        } else {
+             Log.d("ConversationViewModel", "❌ Ignored hint request (Not Listening state)")
+        }
     }
 
     fun endCall() {

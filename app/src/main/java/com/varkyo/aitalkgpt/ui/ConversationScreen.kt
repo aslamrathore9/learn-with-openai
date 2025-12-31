@@ -48,7 +48,9 @@ fun ConversationScreen(
     onEndCall: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
-    onContinue: () -> Unit = {} // Hint/Continue
+    onContinue: () -> Unit = {}, // Hint/Continue
+    onRequestHint: () -> Unit = {},
+    hintSuggestion: String? = null
 ) {
     // Bottom Sheet State
     var showExitBottomSheet by remember { mutableStateOf(false) }
@@ -340,8 +342,64 @@ fun ConversationScreen(
                     }
                 }
 
-                // 4. Caption (Fixed at Bottom of Column, above Controls)
-                if (isCaptionEnabled && state is CallState.Speaking && state.aiText.isNotEmpty()) {
+                // 4. Caption or Hint (Fixed at Bottom of Column, above Controls)
+                
+                // Show Hint if available (Priority over Caption)
+                if (hintSuggestion != null) {
+                     Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E222B)),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFFFC107)), // Gold border for Hint
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, bottom = 24.dp)
+                    ) {
+                        Column {
+                            // Header
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        brush = Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color(0xFF2C2404), 
+                                                Color(0xFF3B3005)
+                                            )
+                                        )
+                                    )
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFC107),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        "Hint Suggestion",
+                                        color = Color(0xFFFFC107),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = NunitoFontFamily
+                                    )
+                                }
+                            }
+                            
+                            HorizontalDivider(thickness = 1.dp, color = Color(0xFF3B3005))
+                            
+                            Box(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = hintSuggestion,
+                                    color = Color.White,
+                                    fontSize = 15.sp,
+                                    fontFamily = NunitoFontFamily
+                                )
+                            }
+                        }
+                    }
+                } else if (isCaptionEnabled && state is CallState.Speaking && state.aiText.isNotEmpty()) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E222B)),
                         shape = RoundedCornerShape(12.dp),
@@ -435,11 +493,21 @@ fun ConversationScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Hint
+                val isListenersTurn = state is CallState.Listening
+                val isHintActive = hintSuggestion != null
+                
                 ControlButton(
-                    icon = Icons.Default.Star, // Placeholder for Sparkles
+                    icon = Icons.Default.Star, 
                     label = "Hint",
-                    color = Color(0xFF1E222B),
-                    iconTint = Color.White
+                    color = if (isHintActive) Color.White else Color(0xFF1E222B),
+                    iconTint = if (isHintActive) Color.Black else Color.White,
+                    onClick = { 
+                        if (!isListenersTurn) {
+                            Toast.makeText(context, "Wait for your turn", Toast.LENGTH_SHORT).show()
+                        } else if (!isPaused) {
+                            onRequestHint()
+                        }
+                    }
                 )
 
                 // Caption

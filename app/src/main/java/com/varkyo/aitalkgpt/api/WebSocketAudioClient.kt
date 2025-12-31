@@ -322,6 +322,7 @@ class WebSocketAudioClient(
     // CONTROL
     // ==========================================
     fun sendJson(json: String) {
+        Log.d(TAG, "Sending JSON: $json")
         webSocket?.send(json)
     }
 
