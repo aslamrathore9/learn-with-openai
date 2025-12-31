@@ -2,7 +2,6 @@ package com.varkyo.aitalkgpt.ui
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,6 +14,9 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,7 +24,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -31,12 +32,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.varkyo.aitalkgpt.CallState
 import com.varkyo.aitalkgpt.R
-import com.varkyo.aitalkgpt.ui.theme.AppBackground
 import com.varkyo.aitalkgpt.ui.theme.BrandRed
-import com.varkyo.aitalkgpt.ui.theme.SurfaceDark
 import com.airbnb.lottie.compose.*
 import androidx.compose.ui.tooling.preview.Preview
+import com.varkyo.aitalkgpt.ui.theme.NunitoFontFamily
+import com.varkyo.aitalkgpt.ui.theme.PictonBlue
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationScreen(
     state: CallState,
@@ -46,6 +48,16 @@ fun ConversationScreen(
     onResume: () -> Unit,
     onContinue: () -> Unit = {} // Hint/Continue
 ) {
+    // Bottom Sheet State
+    var showExitBottomSheet by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    
+    // Caption State
+    var isCaptionEnabled by remember { mutableStateOf(true) }
+    
+    // Pause State - accessible by both Column and Row
+    val isPaused = state is CallState.Paused
+    
     val infiniteTransition = rememberInfiniteTransition(label = "breathing")
     val pulseAlpha by infiniteTransition.animateFloat(
         initialValue = 0.3f,
@@ -58,7 +70,6 @@ fun ConversationScreen(
     )
 
     // Preload Lottie Compositions
-    val speakingComposition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lyra_bounce_speaking))
     val thinkingComposition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.lyra_horizontal_loading))
 
     // Sound Effect Trigger
@@ -126,7 +137,8 @@ fun ConversationScreen(
                     text = topicTitle,
                     color = Color.White,
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = NunitoFontFamily
                 )
                 IconButton(onClick = { /* Settings? */ }) {
                     Icon(
@@ -151,27 +163,24 @@ fun ConversationScreen(
                 val isAiSpeaking = state is CallState.Speaking
                 // Thinking State: Explicit CallState.Thinking, OR Listening but "Thinking" (legacy)
                 val isThinking = state is CallState.Thinking
-                val isPaused = state is CallState.Paused
+
+                val avatarSize by animateDpAsState(
+                    targetValue = if ((isAiSpeaking || isThinking) && !isPaused) 100.dp else 80.dp,
+                    label = "avatarSize",
+                     animationSpec = tween(durationMillis = 250, easing = LinearEasing)
+                )
 
                 Box(contentAlignment = Alignment.Center) {
-                    // Lottie Link for AI
+                    // Native Ripple Animation for AI
                     if (isAiSpeaking && !isPaused) {
-                        LottieAnimation(
-                            composition = speakingComposition,
-                            iterations = LottieConstants.IterateForever,
-                            modifier = Modifier.size(135.dp) // Subtle border effect (120dp avatar + buffer)
-                        )
+                        RippleAnimation(color = BrandRed, size = avatarSize)
                     }
 
                     Box(
                         modifier = Modifier
-                            .size(115.dp)
+                            .size(avatarSize)
                             .clip(CircleShape)
-                            .background(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(BrandRed, Color.Black)
-                                )
-                            )
+                            .background(if (isPaused) Color.Gray else PictonBlue)
                             .border(
                                 width = if (isAiSpeaking && !isPaused) 3.dp else 0.dp,
                                 color = if (isAiSpeaking && !isPaused) Color.White else Color.Transparent,
@@ -179,15 +188,23 @@ fun ConversationScreen(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (isThinking) {
+                        if (isThinking && !isPaused) {
+                            // Show Lottie animation when AI is thinking
                             LottieAnimation(
                                 composition = thinkingComposition,
                                 iterations = LottieConstants.IterateForever,
-                                modifier = Modifier.width(110.dp).height(100.dp)
+                                modifier = Modifier
+                                    .size(avatarSize * 0.6f)
                             )
                         } else {
+                            // Show image based on state
+                            val avatarImage = when {
+                                isAiSpeaking -> R.drawable.lyra_speaking
+                                else -> R.drawable.lyra_wait // Waiting for user
+                            }
+                            
                             Image(
-                                painter = painterResource(id = R.drawable.lyra_speaking),
+                                painter = painterResource(id = avatarImage),
                                 contentDescription = "AI Avatar",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
@@ -200,7 +217,11 @@ fun ConversationScreen(
                     }
                 }
 
-//            Spacer(modifier = Modifier.height(1.dp))
+                val spacerHeight by animateDpAsState(
+                    targetValue = if ((isAiSpeaking || isThinking) && !isPaused) 10.dp else 2.dp,
+                    label = "spacerHeight"
+                )
+                Spacer(modifier = Modifier.height(spacerHeight))
 
                 Text(
                     text = when {
@@ -210,7 +231,8 @@ fun ConversationScreen(
                         else -> ""
                     },
                     color = Color.White.copy(alpha = 0.5f),
-                    fontSize = 14.sp
+                    fontSize = 14.sp,
+                    fontFamily = NunitoFontFamily
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -219,21 +241,23 @@ fun ConversationScreen(
                 val isUserActive = state is CallState.Listening
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    val userAvatarSize by animateDpAsState(
+                        targetValue = if (isUserActive && !isPaused) 100.dp else 80.dp,
+                        label = "userAvatarSize",
+                        animationSpec = tween(durationMillis = 250, easing = LinearEasing)
+                    )
+
                     Box(contentAlignment = Alignment.Center) {
-                        // Lottie Link for User
+                        // Native Ripple for User
                         if (isUserActive && !isPaused) {
-                            LottieAnimation(
-                                composition = speakingComposition,
-                                iterations = LottieConstants.IterateForever,
-                                modifier = Modifier.size(115.dp)
-                            )
+                            RippleAnimation(color = Color.White, size = userAvatarSize)
                         }
 
                         Box(
                             modifier = Modifier
-                                .size(100.dp)
+                                .size(userAvatarSize)
                                 .clip(CircleShape)
-                                .background(Color.Gray)
+                                .background(if (isPaused) Color.Gray else PictonBlue)
                                 .border(
                                     width = if (isUserActive && !isPaused) 4.dp else 0.dp,
                                     color = if (isUserActive && !isPaused) Color.White else Color.Transparent,
@@ -245,20 +269,24 @@ fun ConversationScreen(
                                 painter = painterResource(id = R.drawable.male),
                                 contentDescription = "User Avatar",
                                 modifier = Modifier
-                                    .fillMaxSize() // Use fillMaxSize for crop
-                                    .scale(if (isUserActive && !isPaused) 1.1f else 1f),
-                                contentScale = ContentScale.Crop, // Crop to circle
+                                    .fillMaxSize(),
+                                contentScale = ContentScale.Fit, // Crop to circle
                                 colorFilter = if(isPaused) androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) }) else null
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(2.dp))
+                    val userSpacerHeight by animateDpAsState(
+                        targetValue = if (isUserActive && !isPaused) 10.dp else 2.dp,
+                        label = "userSpacerHeight"
+                    )
+                    Spacer(modifier = Modifier.height(userSpacerHeight))
 
                     Text(
                         text = if (isUserActive && !isPaused) "Listening..." else "Wait for your trun",
                         color = Color.White.copy(alpha = 0.5f),
-                        fontSize = 12.sp
+                        fontSize = 12.sp,
+                        fontFamily = NunitoFontFamily
                     )
                 }
 
@@ -289,7 +317,8 @@ fun ConversationScreen(
                                     "Voice not detected, tap to retry",
                                     color = Color(0xFFE91E63),
                                     fontSize = 16.sp,
-                                    fontWeight = FontWeight.Medium
+                                    fontWeight = FontWeight.Medium,
+                                    fontFamily = NunitoFontFamily
                                 )
                             }
                         }
@@ -302,14 +331,14 @@ fun ConversationScreen(
                                     .padding(horizontal = 24.dp, vertical = 12.dp)
                                     .clickable { onResume() }
                             ) {
-                                Text("Press to continue", color = Color.White, fontSize = 16.sp)
+                                Text("Press to continue", color = Color.White, fontSize = 16.sp, fontFamily = NunitoFontFamily)
                             }
                         }
                     }
                 }
 
                 // 4. Caption (Fixed at Bottom of Column, above Controls)
-                if (state is CallState.Speaking && state.aiText.isNotEmpty()) {
+                if (isCaptionEnabled && state is CallState.Speaking && state.aiText.isNotEmpty()) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E222B)),
                         shape = RoundedCornerShape(12.dp),
@@ -348,7 +377,8 @@ fun ConversationScreen(
                                         "ARYA Captions",
                                         color = Color(0xFFFFC107),
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = NunitoFontFamily
                                     )
                                 }
 
@@ -383,7 +413,8 @@ fun ConversationScreen(
                                     text = state.aiText,
                                     color = Color.White,
                                     fontSize = 14.sp,
-                                    lineHeight = 20.sp
+                                    lineHeight = 20.sp,
+                                    fontFamily = NunitoFontFamily
                                 )
                             }
                         }
@@ -410,21 +441,26 @@ fun ConversationScreen(
 
                 // Caption
                 ControlButton(
-                    icon = Icons.Default.Info, // Placeholder for CC
+                    icon = Icons.Default.Info, // Fallback
                     label = "Caption",
-                    color = Color.White, // Active state example
-                    iconTint = Color.Black
+                    color = if (isCaptionEnabled) Color.White else Color(0xFF1E222B),
+                    iconTint = if (isCaptionEnabled) Color.Black else Color.White,
+                    onClick = { isCaptionEnabled = !isCaptionEnabled },
+                    drawableRes = R.drawable.cc
                 )
 
+
                 // Pause / Resume
-                val isPaused = state is CallState.Paused
                 ControlButton(
-                    icon = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Menu, // Using Menu as placeholder for pause lines if needed, or stick to standard
+                    icon = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Menu,
                     label = if (isPaused) "Resume" else "Pause",
-                    color = Color.White,
-                    iconTint = Color.Black,
-                    onClick = { if (isPaused) onResume() else onPause() }
+                    color = if (isPaused) Color.White else Color(0xFF1E222B),
+                    iconTint = if (isPaused)  Color(0xFF1E222B) else Color.White,
+                    onClick = { if (isPaused) onResume() else onPause() },
+                    isPauseButton = !isPaused
                 )
+
+
 
                 // Continue
                 ControlButton(
@@ -441,12 +477,130 @@ fun ConversationScreen(
                     label = "End",
                     color = BrandRed,
                     iconTint = Color.White,
-                    onClick = onEndCall
+                    onClick = { showExitBottomSheet = true }
                 )
             }
         }
     }
+    
+    // Exit Confirmation Bottom Sheet
+    if (showExitBottomSheet) {
+        ExitConfirmationBottomSheet(
+            onDismiss = { showExitBottomSheet = false },
+            onContinue = { showExitBottomSheet = false },
+            onExit = {
+                showExitBottomSheet = false
+                onEndCall()
+            },
+            sheetState = sheetState
+        )
+    }
 }
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExitConfirmationBottomSheet(
+    onDismiss: () -> Unit = {},
+    onContinue: () -> Unit = {},
+    onExit: () -> Unit = {},
+    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF1A1D26),
+        tonalElevation = 0.dp,
+        dragHandle = null
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 15.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Robot Icon
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.lyra_speaking),
+                    contentDescription = "AI Robot",
+                    modifier = Modifier,
+                    contentScale = ContentScale.Fit
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(15.dp))
+            
+            // Title
+            Text(
+                text = "Don't leave just yet!",
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                fontFamily = NunitoFontFamily
+            )
+            
+            Spacer(modifier = Modifier.height(6.dp))
+            
+            // Description
+            Text(
+                text = "Hey, the call barely began! Say a few more lines\nand see how it goes?",
+                color = Color(0xFF9CA3AF),
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+                lineHeight = 24.sp,
+                fontFamily = NunitoFontFamily
+            )
+            
+            Spacer(modifier = Modifier.height(20.dp))
+            
+            // Continue Button
+            Button(
+                onClick = onContinue,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF6366F1)
+                ),
+                shape = RoundedCornerShape(28.dp)
+            ) {
+                Text(
+                    text = "Continue",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = NunitoFontFamily
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Exit Button
+            TextButton(
+                onClick = onExit,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Exit",
+                    color = Color(0xFF6366F1),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = NunitoFontFamily
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
 
 @Composable
 fun ControlButton(
@@ -454,7 +608,9 @@ fun ControlButton(
     label: String,
     color: Color,
     iconTint: Color,
-    onClick: () -> Unit = {}
+    onClick: () -> Unit = {},
+    isPauseButton: Boolean = false,
+    drawableRes: Int? = null // Optional drawable resource
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -471,43 +627,82 @@ fun ControlButton(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            Icon(imageVector = icon, contentDescription = label, tint = iconTint, modifier = Modifier.size(20.dp))
+            if (isPauseButton) {
+                // Custom Pause Icon - Two vertical bars
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(4.dp)
+                            .height(14.dp)
+                            .background(iconTint, RoundedCornerShape(2.dp))
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Box(
+                        modifier = Modifier
+                            .width(4.dp)
+                            .height(14.dp)
+                            .background(iconTint, RoundedCornerShape(2.dp))
+                    )
+                }
+            } else if (drawableRes != null) {
+                // Use drawable resource if provided
+                Icon(
+                    painter = painterResource(id = drawableRes),
+                    contentDescription = label,
+                    tint = iconTint,
+                    modifier = Modifier.size(20.dp)
+                )
+            } else {
+                // Use ImageVector as fallback
+                Icon(imageVector = icon, contentDescription = label, tint = iconTint, modifier = Modifier.size(20.dp))
+            }
         }
         Spacer(modifier = Modifier.height(4.dp))
-        Text(text = label, color = Color.Gray, fontSize = 11.sp)
+        Text(text = label, color = Color.Gray, fontSize = 11.sp, fontFamily = NunitoFontFamily)
     }
 }
 
 @Composable
-fun RippleAnimation(color: Color) {
-    val infiniteTransition = rememberInfiniteTransition(label = "ripple")
+fun RippleAnimation(color: Color, size: androidx.compose.ui.unit.Dp = 115.dp) {
+    Box(contentAlignment = Alignment.Center) {
+        val waves = listOf(0, 750) // Reduced to 2 layers
+        waves.forEach { delay ->
+            val infiniteTransition = rememberInfiniteTransition(label = "ripple_\$delay")
 
-    val scale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.4f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "scale"
-    )
+            val scale by infiniteTransition.animateFloat(
+                initialValue = 1f,
+                targetValue = 1.35f, // Reduced expansion width
+                animationSpec = infiniteRepeatable(
+                    animation = tween(2000, easing = LinearEasing), // Slower, smoother
+                    repeatMode = RepeatMode.Restart,
+                    initialStartOffset = StartOffset(delay)
+                ),
+                label = "scale"
+            )
 
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "alpha"
-    )
+            val alpha by infiniteTransition.animateFloat(
+                initialValue = 0.5f,
+                targetValue = 0f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(2000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart,
+                    initialStartOffset = StartOffset(delay)
+                ),
+                label = "alpha"
+            )
 
-    Box(
-        modifier = Modifier
-            .size(120.dp) // Base size matches avatar
-            .scale(scale)
-            .border(2.dp, color.copy(alpha = alpha), CircleShape)
-    )
+            Box(
+                modifier = Modifier
+                    .size(size) // Match Avatar Size
+                    .scale(scale)
+                    .background(color.copy(alpha = alpha), CircleShape)
+            )
+        }
+    }
 }
 
 @Preview(showBackground = true)
@@ -536,6 +731,19 @@ fun PreviewConversationScreen_Speaking() {
 
 @Preview(showBackground = true)
 @Composable
+fun PreviewConversationScreen_Thinking() {
+    ConversationScreen(
+        state = CallState.Thinking,
+        topicTitle = "Daily Routine",
+        onEndCall = {},
+        onPause = {},
+        onResume = {}
+    )
+}
+
+
+@Preview(showBackground = true)
+@Composable
 fun PreviewConversationScreen_Listening() {
     ConversationScreen(
         state = CallState.Listening(isUserSpeaking = true, userTranscript = "I want to learn..."),
@@ -550,7 +758,7 @@ fun PreviewConversationScreen_Listening() {
 @Composable
 fun PreviewConversationScreen_Paused() {
     ConversationScreen(
-        state = CallState.Paused,
+        state = CallState.Paused(previousState = CallState.Listening()),
         topicTitle = "Paused Topic",
         onEndCall = {},
         onPause = {},
@@ -568,4 +776,11 @@ fun PreviewConversationScreen_Error() {
         onPause = {},
         onResume = {}
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(showBackground = true)
+@Composable
+fun PreviewExitConfirmationBottomSheet() {
+    ExitConfirmationBottomSheet()
 }

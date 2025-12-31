@@ -42,6 +42,9 @@ class ConversationViewModel(
     val currentTopicTitle: StateFlow<String> = _currentTopicTitle.asStateFlow()
 
     private var currentAiText = ""
+    
+    // Flag to prevent state changes during cleanup
+    private var isEnding = false
 
     init {
         // Initialize Client
@@ -79,21 +82,29 @@ class ConversationViewModel(
         audioClient?.onFailure = { error ->
              Log.e("ConversationViewModel", "Connection Error: $error")
              stopRinging()
-             _callState.value = CallState.Error("Connection Failed")
+             if (!isEnding) {
+                 _callState.value = CallState.Error("Connection Failed")
+             }
         }
         
         audioClient?.onVadSpeechStart = {
              Log.d("ConversationViewModel", "User Speech Started")
-             if (_callState.value is CallState.Listening) {
+             if (!isEnding && _callState.value is CallState.Listening) {
                  _callState.value = CallState.Listening(isUserSpeaking = true)
              }
         }
         
         audioClient?.onVadSpeechEnd = {
              Log.d("ConversationViewModel", "User Speech Ended")
-             if (_callState.value is CallState.Listening) {
-                  // Switch to Thinking immediately when VAD detects silence
-                  _callState.value = CallState.Thinking
+             if (!isEnding) {
+                  val currentState = _callState.value
+                  if (currentState is CallState.Listening) {
+                      // Switch to Thinking immediately when VAD detects silence
+                      _callState.value = CallState.Thinking
+                  } else if (currentState is CallState.Paused && currentState.previousState is CallState.Listening) {
+                      // Update pending state
+                      _callState.value = currentState.copy(previousState = CallState.Thinking)
+                  }
              }
         }
         
@@ -105,16 +116,21 @@ class ConversationViewModel(
                 if (msgType == "assistant.response.text") {
                      val textContent = json.optString("text")
                      currentAiText = textContent
-                     // We might already be in Thinking, stay there until audio starts or update text
-                     // Actually, if we get text, we can show it while "Thinking" or just wait for audio.
-                     // Let's wait for audio to switch to Speaking state, 
-                     // BUT we can update the Thinking UI with the text if we want "Streamed Text" effect?
-                     // Request was: "show progress bar and show text below thinking".
-                     // So maybe Thinking state should hold the text?
-                     // For now, let's keep Thinking generic.
+                     
+                     // Update state immediately if speaking or paused(speaking)
+                     val currentState = _callState.value
+                     if (currentState is CallState.Speaking) {
+                         _callState.value = currentState.copy(aiText = textContent)
+                     } else if (currentState is CallState.Paused && currentState.previousState is CallState.Speaking) {
+                         _callState.value = currentState.copy(
+                             previousState = currentState.previousState.copy(aiText = textContent)
+                         )
+                     }
                 } else if (msgType == "assistant.thinking") {
                      // Server confirm it heard us. Ensure we are in Thinking.
-                     _callState.value = CallState.Thinking
+                     if (!isEnding) {
+                         _callState.value = CallState.Thinking
+                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -123,18 +139,49 @@ class ConversationViewModel(
         
         audioClient?.onAiAudioStart = {
              // AI is speaking
-              _callState.value = CallState.Speaking(aiText = currentAiText)
+             if (!isEnding) {
+                 val currentState = _callState.value
+                 if (currentState is CallState.Paused) {
+                     // AI started speaking while paused (or buffered), so next state is Speaking
+                     _callState.value = currentState.copy(previousState = CallState.Speaking(aiText = currentAiText))
+                 } else {
+                     _callState.value = CallState.Speaking(aiText = currentAiText)
+                 }
+             }
         }
         
         audioClient?.onAiAudioEnd = {
              // AI finished
              Log.d("ConversationViewModel", "AI Finished Speaking")
-             viewModelScope.launch {
-                 // Small delay to let UI settle?
-                  kotlinx.coroutines.delay(500)
-                  _callState.value = CallState.Listening()
-                  // Ensure mic is on
-                  startRecordingSafe()
+             if (!isEnding) {
+                 val currentState = _callState.value
+                 if (currentState is CallState.Paused) {
+                     // If paused, update the preserved state to indicate completion but don't switch yet
+                     if (currentState.previousState is CallState.Speaking) {
+                         _callState.value = currentState.copy(
+                             previousState = currentState.previousState.copy(isComplete = true)
+                         )
+                     } else {
+                        // Fallback
+                        _callState.value = currentState.copy(previousState = CallState.Listening())
+                     }
+                 } else {
+                     viewModelScope.launch {
+                         // Small delay to let UI settle?
+                         kotlinx.coroutines.delay(500)
+                         if (!isEnding) {
+                             // Re-check state in case user paused during delay
+                             val freshState = _callState.value
+                             if (freshState is CallState.Paused) {
+                                  _callState.value = freshState.copy(previousState = CallState.Listening())
+                             } else {
+                                  _callState.value = CallState.Listening()
+                                  // Ensure mic is on
+                                  startRecordingSafe()
+                             }
+                         }
+                     }
+                 }
              }
         }
     }
@@ -152,6 +199,7 @@ class ConversationViewModel(
         }
 
         selectedTopic = topicToUse
+        isEnding = false // Reset flag when starting new call
         _callState.value = CallState.Initializing
         _callDurationSeconds.value = 0L
         _currentTopicTitle.value = topicToUse.title
@@ -190,15 +238,64 @@ class ConversationViewModel(
     }
 
     fun pauseCall() {
-        _callState.value = CallState.Paused
+        val currentState = _callState.value
+        
+        // Don't pause if we're initializing, connecting, or in error state
+        if (currentState is CallState.Initializing || 
+            currentState is CallState.Connecting ||
+            currentState is CallState.Error ||
+            currentState is CallState.Paused) {
+            return
+        }
+        
+        // Store current state and pause
+        _callState.value = CallState.Paused(previousState = currentState)
         stopRinging()
         audioClient?.stopAudioRecording()
+        audioClient?.pauseAudioPlayback()
+        
+        Log.d("ConversationViewModel", "Call paused from state: $currentState")
     }
 
     fun resumeCall() {
-         if (_callState.value is CallState.Paused) {
-            _callState.value = CallState.Listening()
-            startRecordingSafe()
+        val currentState = _callState.value
+        
+        if (currentState is CallState.Paused) {
+            val previousState = currentState.previousState
+            
+            // Restore the previous state
+            _callState.value = previousState
+            
+            // Resume appropriate actions based on previous state
+            when (previousState) {
+                is CallState.Listening -> {
+                    startRecordingSafe()
+                }
+                is CallState.Speaking -> {
+                    audioClient?.resumeAudioPlayback()
+                    // If audio finished while paused (isComplete), we need to transition to Listening
+                    // We add a small delay to allow buffered audio to play (approximate)
+                    if (previousState.isComplete) {
+                        viewModelScope.launch {
+                            kotlinx.coroutines.delay(1000) 
+                            if (!isEnding && _callState.value is CallState.Speaking) {
+                                 _callState.value = CallState.Listening()
+                                 startRecordingSafe()
+                            }
+                        }
+                    }
+                }
+                is CallState.Thinking -> {
+                    // Just wait, no action needed
+                }
+                else -> {
+                    // Default to listening if previous state was unexpected
+                    _callState.value = CallState.Listening()
+                    startRecordingSafe()
+                }
+            }
+            
+            Log.d("ConversationViewModel", "Call resumed to state: $previousState")
         }
     }
 
@@ -211,11 +308,17 @@ class ConversationViewModel(
     fun endCall() {
         viewModelScope.launch {
             Log.d("ConversationViewModel", "🛑 End call requested...")
+            isEnding = true // Set flag to prevent callbacks from changing state
             stopRinging()
-            _callState.value = CallState.Idle
-            _callDurationSeconds.value = 0L
+            
+            // Close audio client first
             audioClient?.close()
             audioClient = null
+            
+            // Then update state - this ensures no callbacks fire after
+            _callState.value = CallState.Idle
+            _callDurationSeconds.value = 0L
+            currentAiText = ""
         }
     }
 

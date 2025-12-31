@@ -1,7 +1,6 @@
 package com.varkyo.aitalkgpt.ui
 
 import android.os.Build
-import android.view.View
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
@@ -27,7 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.res.painterResource
@@ -44,7 +42,7 @@ import com.varkyo.aitalkgpt.ui.theme.BrandRed
 import com.varkyo.aitalkgpt.ui.theme.SurfaceDark
 import com.varkyo.aitalkgpt.ui.theme.SurfaceDark2
 
-val RobotoLight = FontFamily(Font(R.font.nunito_light))
+val NunitoLight = FontFamily(Font(R.font.nunito_light))
 
 data class Topic(
     val id: String,
@@ -260,7 +258,7 @@ fun TopBar() {
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
-                        fontFamily = RobotoLight
+                        fontFamily = NunitoLight
                     )
                 }
             }
@@ -315,7 +313,7 @@ fun TopBar() {
                     color = Color.White,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = RobotoLight
+                    fontFamily = NunitoLight
                 )
             }
 
@@ -327,7 +325,7 @@ fun TopBar() {
                 fontSize = 14.sp,
                 textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
                 modifier = Modifier.clickable { /* TODO */ },
-                fontFamily = RobotoLight
+                fontFamily = NunitoLight
             )
         }
     }
@@ -379,7 +377,7 @@ fun TabItem(
                 color = if (selected) BrandRed else Color.Gray,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                fontFamily = RobotoLight
+                fontFamily = NunitoLight
             )
         }
 
@@ -453,7 +451,7 @@ fun TopicCard(
                                 text = topic.difficulty,
                                 color = Color.Gray,
                                 fontSize = 7.sp,
-                                fontFamily = RobotoLight,
+                                fontFamily = NunitoLight,
                                 modifier = Modifier
                                     .wrapContentHeight()
                                     .offset(y = (-2).dp), //  removes tiny visual gap
@@ -522,7 +520,7 @@ fun TopicCard(
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             lineHeight = 18.sp,
                             maxLines = 2,
-                            fontFamily = RobotoLight
+                            fontFamily = NunitoLight
                         )
 
 
@@ -530,7 +528,7 @@ fun TopicCard(
                             text = "Last chat: ${topic.lastChatDate ?: "Never"}",
                             color = Color.Gray,
                             fontSize = 10.sp,
-                            fontFamily = RobotoLight
+                            fontFamily = NunitoLight
                         )
                     }
 
@@ -554,7 +552,7 @@ fun TopicCard(
                             color = Color(0xFF4CAF50), // Green
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Medium,
-                            fontFamily = RobotoLight
+                            fontFamily = NunitoLight
                         )
                     }
                 }
@@ -605,7 +603,7 @@ fun CallConfirmationSheet(
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
-                fontFamily = RobotoLight
+                fontFamily = NunitoLight
             )
             IconButton(onClick = onDismiss) {
                 Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
@@ -631,7 +629,7 @@ fun CallConfirmationSheet(
             text = "20:00 minutes remaining of free trial",
             color = Color.Gray,
             fontSize = 12.sp,
-            fontFamily = RobotoLight
+            fontFamily = NunitoLight
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -653,7 +651,7 @@ fun CallConfirmationSheet(
             ) {
                 Icon(Icons.Default.Phone, contentDescription = null, tint = Color.White)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Call", fontSize = 16.sp, color = Color.White, fontFamily = RobotoLight)
+                Text("Call", fontSize = 16.sp, color = Color.White, fontFamily = NunitoLight)
             }
 
             // Chat Button
@@ -668,7 +666,7 @@ fun CallConfirmationSheet(
             ) {
                 Icon(Icons.Default.Email, contentDescription = null, tint = Color.White) // Using Email as chat placeholder
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Chat", fontSize = 16.sp, color = Color.White, fontFamily = RobotoLight)
+                Text("Chat", fontSize = 16.sp, color = Color.White, fontFamily = NunitoLight)
             }
         }
 

@@ -196,7 +196,7 @@ class WebSocketAudioClient(
                     .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                     .build()
             )
-            .setBufferSizeInBytes(bufferSize)
+            .setBufferSizeInBytes(bufferSize * 5) // Increase buffer to handle pause/resume accumulating data
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
         
@@ -206,7 +206,8 @@ class WebSocketAudioClient(
     }
 
     private fun writeAudioToTrack(pcmData: ByteArray) {
-        if (audioTrack != null && isPlaying.get()) {
+        // Write even if paused (it will buffer in the AudioTrack)
+        if (audioTrack != null) {
             audioTrack?.write(pcmData, 0, pcmData.size)
         }
     }
@@ -228,6 +229,32 @@ class WebSocketAudioClient(
             Log.e(TAG, "Failed to restore audio settings", e)
         }
     }
+
+    fun pauseAudioPlayback() {
+        if (audioTrack != null && isPlaying.get()) {
+            try {
+                audioTrack?.pause()
+                isPlaying.set(false) // Set to false when paused
+                Log.d(TAG, "AudioTrack Paused")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to pause audio", e)
+            }
+        }
+    }
+
+    fun resumeAudioPlayback() {
+        if (audioTrack != null && !isPlaying.get()) {
+            try {
+                audioTrack?.play()
+                isPlaying.set(true)
+                Log.d(TAG, "AudioTrack Resumed")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to resume audio", e)
+            }
+        }
+    }
+
+
 
     // ==========================================
     // CONTROL

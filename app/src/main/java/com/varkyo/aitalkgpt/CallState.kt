@@ -24,8 +24,8 @@ sealed class CallState {
     // Thinking state (between user speech end and AI response)
     object Thinking : CallState()
 
-    // Paused state
-    object Paused : CallState()
+    // Paused state - stores the previous state to resume correctly
+    data class Paused(val previousState: CallState = Listening()) : CallState()
     
     // Error state
     data class Error(val message: String) : CallState()
