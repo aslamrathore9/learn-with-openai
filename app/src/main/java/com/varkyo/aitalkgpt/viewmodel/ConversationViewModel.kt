@@ -43,6 +43,11 @@ class ConversationViewModel(
 
     private val _hintSuggestion = MutableStateFlow<String?>(null)
     val hintSuggestion: StateFlow<String?> = _hintSuggestion.asStateFlow()
+    
+    // Cached hint and visibility state for toggle behavior
+    private var _cachedHintSuggestion: String? = null
+    private val _isHintVisible = MutableStateFlow(false)
+    val isHintVisible: StateFlow<Boolean> = _isHintVisible.asStateFlow()
 
     private var currentAiText = ""
     
@@ -111,8 +116,9 @@ class ConversationViewModel(
         
         audioClient?.onVadSpeechEnd = {
              // User finished speaking a phrase
-             Log.d("ConversationViewModel", "VAD Speech End -> Switching to Thinking & Hint Cleared")
-             // Clear hint here
+             Log.d("ConversationViewModel", "VAD Speech End -> Switching to Thinking & Hint Hidden")
+             // Hide hint when user speaks (but keep cached)
+             _isHintVisible.value = false
              _hintSuggestion.value = null
              
              if (!isEnding) {
@@ -145,7 +151,9 @@ class ConversationViewModel(
                      }
                 } else if (msgType == "hint") {
                      val suggestion = json.optString("suggestion")
+                     _cachedHintSuggestion = suggestion
                      _hintSuggestion.value = suggestion
+                     _isHintVisible.value = true
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -167,7 +175,12 @@ class ConversationViewModel(
         
         audioClient?.onAiAudioEnd = {
              // AI finished
-             Log.d("ConversationViewModel", "AI Finished Speaking")
+             Log.d("ConversationViewModel", "AI Finished Speaking - Clearing cached hint for new turn")
+             // Clear cached hint when AI finishes (new user turn begins)
+             _cachedHintSuggestion = null
+             _isHintVisible.value = false
+             _hintSuggestion.value = null
+             
              if (!isEnding) {
                  val currentState = _callState.value
                  if (currentState is CallState.Paused) {
@@ -315,7 +328,8 @@ class ConversationViewModel(
     fun continueConversation() {
          val currentState = _callState.value
          
-         // Clear hint when user continues or speaks
+         // Hide hint when user continues or speaks (but keep cached)
+         _isHintVisible.value = false
          _hintSuggestion.value = null
          
          if (currentState is CallState.Speaking) {
@@ -358,10 +372,23 @@ class ConversationViewModel(
         Log.d("ConversationViewModel", "Current State: $currentState")
         
         if (currentState is CallState.Listening) {
-             Log.d("ConversationViewModel", "Sending hint request...")
-             _hintSuggestion.value = null // Clear previous
-             val msg = """{"type": "request_hint"}"""
-             audioClient?.sendJson(msg)
+            // Toggle behavior
+            if (_isHintVisible.value) {
+                // Currently visible -> Hide it
+                Log.d("ConversationViewModel", "Hiding hint")
+                _isHintVisible.value = false
+                _hintSuggestion.value = null
+            } else if (_cachedHintSuggestion != null) {
+                // Hidden but cached -> Show cached hint
+                Log.d("ConversationViewModel", "Showing cached hint")
+                _hintSuggestion.value = _cachedHintSuggestion
+                _isHintVisible.value = true
+            } else {
+                // No cached hint -> Fetch new one
+                Log.d("ConversationViewModel", "Fetching new hint from server")
+                val msg = """{"type": "request_hint"}"""
+                audioClient?.sendJson(msg)
+            }
         } else {
              Log.d("ConversationViewModel", "❌ Ignored hint request (Not Listening state)")
         }

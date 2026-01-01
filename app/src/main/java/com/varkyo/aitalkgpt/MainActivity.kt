@@ -70,6 +70,7 @@ fun AppContent() {
     } else {
         // Unified Conversation Screen
         val hintSuggestion by viewModel.hintSuggestion.collectAsState()
+        val isHintVisible by viewModel.isHintVisible.collectAsState()
         
         com.varkyo.aitalkgpt.ui.ConversationScreen(
             state = callState,
@@ -79,7 +80,8 @@ fun AppContent() {
             onResume = { viewModel.resumeCall() },
             onContinue = { viewModel.continueConversation() },
             onRequestHint = { viewModel.requestHint() },
-            hintSuggestion = hintSuggestion
+            hintSuggestion = hintSuggestion,
+            isHintVisible = isHintVisible
         )
     }
 }

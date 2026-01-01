@@ -50,7 +50,8 @@ fun ConversationScreen(
     onResume: () -> Unit,
     onContinue: () -> Unit = {}, // Hint/Continue
     onRequestHint: () -> Unit = {},
-    hintSuggestion: String? = null
+    hintSuggestion: String? = null,
+    isHintVisible: Boolean = false
 ) {
     // Bottom Sheet State
     var showExitBottomSheet by remember { mutableStateOf(false) }
@@ -178,7 +179,7 @@ fun ConversationScreen(
                 Box(contentAlignment = Alignment.Center) {
                     // Native Ripple Animation for AI
                     if (isAiSpeaking && !isPaused) {
-                        RippleAnimation(color = BrandRed, size = avatarSize)
+                        RippleAnimation(color = Color.White, size = avatarSize)
                     }
 
                     Box(
@@ -199,7 +200,9 @@ fun ConversationScreen(
                                 composition = thinkingComposition,
                                 iterations = LottieConstants.IterateForever,
                                 modifier = Modifier
-                                    .size(avatarSize * 0.6f)
+                                    .scale(1.2f)
+                                    .fillMaxSize()
+                                    //.size(avatarSize * 1.8f)
                             )
                         } else {
                             // Show image based on state
@@ -344,56 +347,95 @@ fun ConversationScreen(
 
                 // 4. Caption or Hint (Fixed at Bottom of Column, above Controls)
                 
-                // Show Hint if available (Priority over Caption)
-                if (hintSuggestion != null) {
+                // Show Hint if visible and available (Priority over Caption)
+                if (isHintVisible && hintSuggestion != null) {
                      Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E222B)),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFFFC107)), // Gold border for Hint
+                        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                        shape = RoundedCornerShape(16.dp),
+                        border = null, // No outer border
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, bottom = 24.dp)
+                            .padding(start = 12.dp, end = 12.dp, bottom = 18.dp)
                     ) {
-                        Column {
-                            // Header
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(
-                                        brush = Brush.horizontalGradient(
-                                            colors = listOf(
-                                                Color(0xFF2C2404), 
-                                                Color(0xFF3B3005)
-                                            )
+                        Column(
+                            modifier = Modifier
+                                .background(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color(0xFF252756), // Dark purple
+                                            Color(0xFF01091A),  // Dark blue
+
                                         )
-                                    )
-                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                                    ),
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                                .padding(top = 10.dp, bottom = 2.dp,start = 16.dp, end = 16.dp)
+                        ) {
+                            // Header with close button
+                            Box(
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    modifier = Modifier.align(Alignment.Center),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Icon(
                                         imageVector = Icons.Default.Star,
                                         contentDescription = null,
-                                        tint = Color(0xFFFFC107),
-                                        modifier = Modifier.size(16.dp)
+                                        tint = Color(0xFFCC831D), // Orange/gold star
+                                        modifier = Modifier.size(20.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
                                     Text(
-                                        "Hint Suggestion",
-                                        color = Color(0xFFFFC107),
-                                        fontSize = 12.sp,
+                                        "Suggestion for reply",
+                                        color = Color(0xFFCC831D), // Orange/gold text
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
                                         fontFamily = NunitoFontFamily
                                     )
                                 }
+                                
+                                // Close button
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = Color(0xFF0F1525),
+                                    modifier = Modifier
+                                        .align(Alignment.CenterEnd)
+                                        .size(20.dp)
+                                        .clickable { onRequestHint() } // Toggle hint visibility
+                                )
                             }
                             
-                            HorizontalDivider(thickness = 1.dp, color = Color(0xFF3B3005))
+                            Spacer(modifier = Modifier.height(8.dp))
                             
-                            Box(modifier = Modifier.padding(16.dp)) {
+                            // Content box with border/elevation
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.CenterHorizontally)
+                                    .wrapContentWidth()
+                                    .border(
+                                        width = 1.dp,
+                                        color = Color(0xFF4A4D7E).copy(alpha = 0.6f), // Subtle purple border
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .background(
+                                        brush = Brush.verticalGradient(
+                                            colors = listOf(
+                                                Color(0xFF252756), // Dark purple
+                                                Color(0xFF01091A),  // Dark blue
+                                            )
+                                        ),
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .padding(horizontal = 10.dp, vertical = 14.dp)
+                            ) {
                                 Text(
                                     text = hintSuggestion,
-                                    color = Color.White,
-                                    fontSize = 15.sp,
+                                    color = Color.White.copy(alpha = 0.95f),
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 28.sp,
                                     fontFamily = NunitoFontFamily
                                 )
                             }
@@ -414,7 +456,7 @@ fun ConversationScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(
-                                        brush = Brush.horizontalGradient(
+                                        brush = Brush.verticalGradient(
                                             colors = listOf(
                                                 Color(0xFF07191A), // Start Color
                                                 Color(0xFF022928)  // End Color (Darker Blue)
@@ -459,13 +501,14 @@ fun ConversationScreen(
                             Box(
                                 modifier = Modifier
                                     .background(
-                                        brush = Brush.horizontalGradient(
+                                        brush = Brush.verticalGradient(
                                             colors = listOf(
                                                 Color(0xFF07191A), // Start Color
                                                 Color(0xFF022928)  // End Color (Darker Blue)
                                             )
                                         )
                                     )
+                                    .fillMaxWidth()
                                     .padding(16.dp)
                                     .heightIn(max = 100.dp) // Adjusted for padding (16*2) + ~3 lines (20*3)
                                     .verticalScroll(rememberScrollState())
@@ -494,13 +537,12 @@ fun ConversationScreen(
             ) {
                 // Hint
                 val isListenersTurn = state is CallState.Listening
-                val isHintActive = hintSuggestion != null
                 
                 ControlButton(
                     icon = Icons.Default.Star, 
                     label = "Hint",
-                    color = if (isHintActive) Color.White else Color(0xFF1E222B),
-                    iconTint = if (isHintActive) Color.Black else Color.White,
+                    color = if (isHintVisible) Color.White else Color(0xFF1E222B),
+                    iconTint = if (isHintVisible) Color.Black else Color.White,
                     onClick = { 
                         if (!isListenersTurn) {
                             Toast.makeText(context, "Wait for your turn", Toast.LENGTH_SHORT).show()
@@ -802,7 +844,8 @@ fun PreviewConversationScreen_Speaking() {
         topicTitle = "Daily Routine",
         onEndCall = {},
         onPause = {},
-        onResume = {}
+        onResume = {},
+        isHintVisible = false
     )
 }
 
@@ -814,7 +857,8 @@ fun PreviewConversationScreen_Thinking() {
         topicTitle = "Daily Routine",
         onEndCall = {},
         onPause = {},
-        onResume = {}
+        onResume = {},
+        isHintVisible = false
     )
 }
 
@@ -827,7 +871,8 @@ fun PreviewConversationScreen_Listening() {
         topicTitle = "Improve Vocabulary",
         onEndCall = {},
         onPause = {},
-        onResume = {}
+        onResume = {},
+        isHintVisible = false
     )
 }
 
@@ -839,7 +884,8 @@ fun PreviewConversationScreen_Paused() {
         topicTitle = "Paused Topic",
         onEndCall = {},
         onPause = {},
-        onResume = {}
+        onResume = {},
+        isHintVisible = false
     )
 }
 
@@ -851,7 +897,24 @@ fun PreviewConversationScreen_Error() {
         topicTitle = "Error State",
         onEndCall = {},
         onPause = {},
-        onResume = {}
+        onResume = {},
+        isHintVisible = false
+    )
+}
+
+@Preview(showBackground = true)
+@Composable
+fun PreviewConversationScreen_HintSuggestion() {
+    ConversationScreen(
+        state = CallState.Listening(isUserSpeaking = false, userTranscript = ""),
+        topicTitle = "Daily Routine",
+        onEndCall = {},
+        onPause = {},
+        onResume = {},
+        onContinue = {},
+        onRequestHint = {},
+        hintSuggestion = "what hobbies do you enjoy?",
+        isHintVisible = true
     )
 }
 
